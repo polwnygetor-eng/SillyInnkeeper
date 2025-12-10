@@ -54,6 +54,33 @@ function initializeSchema(db: Database.Database): void {
     );
     
     CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+    
+    -- Таблица карточек (метаданные)
+    CREATE TABLE IF NOT EXISTS cards (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      description TEXT,
+      tags TEXT,
+      creator TEXT,
+      spec_version TEXT,
+      avatar_path TEXT,
+      created_at INTEGER NOT NULL,
+      data_json TEXT NOT NULL
+    );
+    
+    -- Таблица физических файлов карточек
+    CREATE TABLE IF NOT EXISTS card_files (
+      file_path TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL,
+      file_mtime INTEGER NOT NULL,
+      file_size INTEGER NOT NULL,
+      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+    );
+    
+    -- Индексы для производительности
+    CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
+    CREATE INDEX IF NOT EXISTS idx_cards_created_at ON cards(created_at);
+    CREATE INDEX IF NOT EXISTS idx_card_files_card_id ON card_files(card_id);
   `)
 }
 
