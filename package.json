@@ -5,5 +5,8 @@
   "repository": "https://github.com/dmitryplyaskin/SillyInnkeeper",
   "author": "Dmitry Plyaskin",
   "license": "AGPL-3.0",
-  "scripts": {}
+  "scripts": {
+    "start:client": "cd client && yarn dev",
+    "start:server": "cd server && yarn dev"
+  }
 }
