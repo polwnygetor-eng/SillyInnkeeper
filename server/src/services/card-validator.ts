@@ -110,23 +110,8 @@ export class CardValidator {
 
     const data = card.data as Record<string, unknown>;
 
-    // Обязательные поля в data
-    const requiredFields = [
-      "name",
-      "description",
-      "personality",
-      "scenario",
-      "first_mes",
-      "mes_example",
-      "creator_notes",
-      "system_prompt",
-      "post_history_instructions",
-      "alternate_greetings",
-      "tags",
-      "creator",
-      "character_version",
-      "extensions",
-    ];
+    // Обязательные поля в data (минимальный набор для валидной карточки)
+    const requiredFields = ["name", "description", "first_mes"];
 
     for (const field of requiredFields) {
       if (!Object.hasOwnProperty.call(data, field)) {
@@ -135,7 +120,27 @@ export class CardValidator {
       }
     }
 
-    // Проверка типов
+    // Проверка типов обязательных полей
+    if (typeof data.name !== "string") {
+      this.lastValidationError = "data.name must be a string";
+      return false;
+    }
+
+    if (typeof data.description !== "string") {
+      this.lastValidationError = "data.description must be a string";
+      return false;
+    }
+
+    if (typeof data.first_mes !== "string") {
+      this.lastValidationError = "data.first_mes must be a string";
+      return false;
+    }
+
+    if (typeof data.mes_example !== "string") {
+      this.lastValidationError = "data.mes_example must be a string";
+      return false;
+    }
+
     if (!Array.isArray(data.alternate_greetings)) {
       this.lastValidationError = "data.alternate_greetings must be an array";
       return false;
@@ -146,13 +151,64 @@ export class CardValidator {
       return false;
     }
 
+    if (typeof data.creator !== "string") {
+      this.lastValidationError = "data.creator must be a string";
+      return false;
+    }
+
+    if (typeof data.character_version !== "string") {
+      this.lastValidationError = "data.character_version must be a string";
+      return false;
+    }
+
     if (typeof data.extensions !== "object" || data.extensions === null) {
       this.lastValidationError = "data.extensions must be an object";
       return false;
     }
 
+    // Опциональные поля - проверяем типы только если они присутствуют
+    if (
+      data.personality !== undefined &&
+      typeof data.personality !== "string"
+    ) {
+      this.lastValidationError = "data.personality must be a string if present";
+      return false;
+    }
+
+    if (data.scenario !== undefined && typeof data.scenario !== "string") {
+      this.lastValidationError = "data.scenario must be a string if present";
+      return false;
+    }
+
+    if (
+      data.creator_notes !== undefined &&
+      typeof data.creator_notes !== "string"
+    ) {
+      this.lastValidationError =
+        "data.creator_notes must be a string if present";
+      return false;
+    }
+
+    if (
+      data.system_prompt !== undefined &&
+      typeof data.system_prompt !== "string"
+    ) {
+      this.lastValidationError =
+        "data.system_prompt must be a string if present";
+      return false;
+    }
+
+    if (
+      data.post_history_instructions !== undefined &&
+      typeof data.post_history_instructions !== "string"
+    ) {
+      this.lastValidationError =
+        "data.post_history_instructions must be a string if present";
+      return false;
+    }
+
     // Валидация character_book (если присутствует)
-    if (data.character_book !== undefined) {
+    if (data.character_book !== undefined && data.character_book !== null) {
       if (!this.validateCharacterBook(data.character_book)) {
         return false;
       }
