@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { statSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
-import { readdir as readdirAsync } from "fs-extra";
+import { readdir as readdirAsync, writeFile, ensureDir } from "fs-extra";
 import pLimit from "p-limit";
 import { randomUUID } from "node:crypto";
 import { createDatabaseService, DatabaseService } from "./database";
@@ -74,7 +74,10 @@ export class ScanService {
         // Рекурсивно сканируем подпапки
         const subFiles = await this.getAllPngFiles(fullPath);
         files.push(...subFiles);
-      } else if (entry.isFile() && extname(entry.name).toLowerCase() === ".png") {
+      } else if (
+        entry.isFile() &&
+        extname(entry.name).toLowerCase() === ".png"
+      ) {
         files.push(fullPath);
       }
     }
@@ -133,10 +136,9 @@ export class ScanService {
         avatarPath = await generateThumbnail(filePath, cardId);
       } else {
         // Проверяем, есть ли уже миниатюра
-        const existingCard = this.dbService.queryOne<{ avatar_path: string | null }>(
-          "SELECT avatar_path FROM cards WHERE id = ?",
-          [cardId]
-        );
+        const existingCard = this.dbService.queryOne<{
+          avatar_path: string | null;
+        }>("SELECT avatar_path FROM cards WHERE id = ?", [cardId]);
         if (!existingCard?.avatar_path) {
           avatarPath = await generateThumbnail(filePath, cardId);
         } else {
@@ -217,6 +219,28 @@ export class ScanService {
           );
         }
       });
+
+      // Сохраняем JSON файл с данными карточки (только если включено через переменную окружения)
+      if (process.env.ENABLE_JSON_CACHE === "true") {
+        const jsonDir = join(process.cwd(), "data", "cache", "json");
+        await ensureDir(jsonDir);
+        const jsonPath = join(jsonDir, `${cardId}.json`);
+        const jsonData = {
+          db: {
+            id: cardId,
+            name,
+            description,
+            tags: cardData.tags || null,
+            creator,
+            spec_version: specVersion,
+            avatar_path: avatarPath,
+            created_at: createdAt,
+            data_json: cardData,
+          },
+          raw: parsedData,
+        };
+        await writeFile(jsonPath, JSON.stringify(jsonData, null, 2), "utf-8");
+      }
     } catch (error) {
       console.error(`Ошибка при обработке файла ${filePath}:`, error);
     }
@@ -228,9 +252,10 @@ export class ScanService {
   private async cleanupDeletedFiles(): Promise<void> {
     try {
       // Получаем все файлы из БД
-      const dbFiles = this.dbService.query<{ file_path: string; card_id: string }>(
-        "SELECT file_path, card_id FROM card_files"
-      );
+      const dbFiles = this.dbService.query<{
+        file_path: string;
+        card_id: string;
+      }>("SELECT file_path, card_id FROM card_files");
 
       const filesToDelete: Array<{ file_path: string; card_id: string }> = [];
 
@@ -245,7 +270,9 @@ export class ScanService {
         return;
       }
 
-      console.log(`Найдено ${filesToDelete.length} удаленных файлов для очистки`);
+      console.log(
+        `Найдено ${filesToDelete.length} удаленных файлов для очистки`
+      );
 
       // Удаляем файлы из БД
       // CASCADE автоматически удалит карточки без файлов
@@ -288,4 +315,3 @@ export function createScanService(db: Database.Database): ScanService {
   const dbService = createDatabaseService(db);
   return new ScanService(dbService);
 }
-
