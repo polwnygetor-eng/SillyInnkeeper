@@ -7,13 +7,16 @@ import {
 } from "effector";
 import { getCards } from "@/shared/api/cards";
 import type { CardListItem } from "@/shared/types/cards";
+import type { CardsQuery } from "@/shared/types/cards-query";
 
 // Effects
-export const loadCardsFx = createEffect<void, CardListItem[], Error>(
-  async () => {
-    return await getCards();
-  }
-);
+export const loadCardsFx = createEffect<
+  CardsQuery | void,
+  CardListItem[],
+  Error
+>(async (query) => {
+  return await getCards(query as CardsQuery | undefined);
+});
 
 // Stores
 export const $cards = createStore<CardListItem[]>([]);

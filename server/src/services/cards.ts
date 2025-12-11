@@ -10,6 +10,32 @@ export interface CardListItem {
   file_path: string | null;
 }
 
+export type TriState = "any" | "1" | "0";
+
+export type CardsSort =
+  | "created_at_desc"
+  | "created_at_asc"
+  | "name_asc"
+  | "name_desc";
+
+export interface SearchCardsParams {
+  sort?: CardsSort;
+  name?: string;
+  creators?: string[];
+  spec_versions?: string[];
+  tags?: string[]; // rawName (normalized)
+  created_from_ms?: number;
+  created_to_ms?: number;
+  has_creator_notes?: TriState;
+  has_system_prompt?: TriState;
+  has_post_history_instructions?: TriState;
+  has_personality?: TriState;
+  has_scenario?: TriState;
+  has_mes_example?: TriState;
+  has_character_book?: TriState;
+  alternate_greetings_min?: number;
+}
+
 /**
  * Сервис для работы с карточками
  */
@@ -21,6 +47,102 @@ export class CardsService {
    * @returns Массив карточек с основными полями
    */
   getCardsList(): CardListItem[] {
+    return this.searchCards({ sort: "created_at_desc" });
+  }
+
+  /**
+   * Поиск/фильтрация карточек (v1, без пагинации)
+   */
+  searchCards(params: SearchCardsParams = {}): CardListItem[] {
+    const where: string[] = [];
+    const sqlParams: unknown[] = [];
+
+    const sort = params.sort ?? "created_at_desc";
+
+    if (params.name && params.name.trim().length > 0) {
+      where.push(`c.name LIKE ? COLLATE NOCASE`);
+      sqlParams.push(`%${params.name.trim()}%`);
+    }
+
+    if (params.creators && params.creators.length > 0) {
+      const placeholders = params.creators.map(() => "?").join(", ");
+      where.push(`c.creator IN (${placeholders})`);
+      sqlParams.push(...params.creators);
+    }
+
+    if (params.spec_versions && params.spec_versions.length > 0) {
+      const placeholders = params.spec_versions.map(() => "?").join(", ");
+      where.push(`c.spec_version IN (${placeholders})`);
+      sqlParams.push(...params.spec_versions);
+    }
+
+    if (params.tags && params.tags.length > 0) {
+      for (const tagRawName of params.tags) {
+        where.push(
+          `EXISTS (SELECT 1 FROM card_tags ct WHERE ct.card_id = c.id AND ct.tag_rawName = ?)`
+        );
+        sqlParams.push(tagRawName);
+      }
+    }
+
+    if (
+      typeof params.created_from_ms === "number" &&
+      Number.isFinite(params.created_from_ms)
+    ) {
+      where.push(`c.created_at >= ?`);
+      sqlParams.push(params.created_from_ms);
+    }
+
+    if (
+      typeof params.created_to_ms === "number" &&
+      Number.isFinite(params.created_to_ms)
+    ) {
+      where.push(`c.created_at <= ?`);
+      sqlParams.push(params.created_to_ms);
+    }
+
+    const addTriState = (column: string, value: TriState | undefined) => {
+      if (!value || value === "any") return;
+      where.push(`${column} = ?`);
+      sqlParams.push(value === "1" ? 1 : 0);
+    };
+
+    addTriState("c.has_creator_notes", params.has_creator_notes);
+    addTriState("c.has_system_prompt", params.has_system_prompt);
+    addTriState(
+      "c.has_post_history_instructions",
+      params.has_post_history_instructions
+    );
+    addTriState("c.has_personality", params.has_personality);
+    addTriState("c.has_scenario", params.has_scenario);
+    addTriState("c.has_mes_example", params.has_mes_example);
+    addTriState("c.has_character_book", params.has_character_book);
+
+    if (
+      typeof params.alternate_greetings_min === "number" &&
+      Number.isFinite(params.alternate_greetings_min) &&
+      params.alternate_greetings_min > 0
+    ) {
+      where.push(`c.alternate_greetings_count >= ?`);
+      sqlParams.push(params.alternate_greetings_min);
+    }
+
+    const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+
+    const orderBy = (() => {
+      switch (sort) {
+        case "created_at_asc":
+          return `ORDER BY c.created_at ASC`;
+        case "name_asc":
+          return `ORDER BY c.name COLLATE NOCASE ASC, c.created_at DESC`;
+        case "name_desc":
+          return `ORDER BY c.name COLLATE NOCASE DESC, c.created_at DESC`;
+        case "created_at_desc":
+        default:
+          return `ORDER BY c.created_at DESC`;
+      }
+    })();
+
     // SQL запрос выбирает только легкие колонки, без data_json
     // Подзапрос для получения первого file_path из card_files
     const sql = `
@@ -37,7 +159,8 @@ export class CardsService {
           LIMIT 1
         ) as file_path
       FROM cards c
-      ORDER BY c.created_at DESC
+      ${whereSql}
+      ${orderBy}
     `;
 
     const rows = this.dbService.query<{
@@ -47,11 +170,9 @@ export class CardsService {
       creator: string | null;
       avatar_path: string | null;
       file_path: string | null;
-    }>(sql);
+    }>(sql, sqlParams);
 
-    // Преобразуем результаты в формат ответа
     return rows.map((row) => {
-      // Парсим tags из JSON строки
       let tags: string[] | null = null;
       if (row.tags) {
         try {
@@ -61,7 +182,6 @@ export class CardsService {
         }
       }
 
-      // Формируем avatar_url
       const avatarUrl = row.avatar_path
         ? `/api/thumbnail/${row.id}`
         : "/api/thumbnail/default";
