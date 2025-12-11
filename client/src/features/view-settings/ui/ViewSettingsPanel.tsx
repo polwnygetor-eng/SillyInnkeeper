@@ -1,11 +1,4 @@
-import {
-  Paper,
-  Group,
-  SegmentedControl,
-  Switch,
-  Text,
-  Code,
-} from "@mantine/core";
+import { Paper, Group, SegmentedControl, Switch, Text } from "@mantine/core";
 import { useUnit } from "effector-react";
 import {
   $columnsCount,

@@ -1,14 +1,13 @@
 import { createStore, createEvent, createEffect, sample } from "effector";
+import {
+  getViewSettings,
+  updateViewSettings,
+  type ViewSettings,
+} from "@/shared/api/view-settings";
 
 // Типы
 export type ColumnsCount = 3 | 5 | 7;
 
-interface ViewSettings {
-  columnsCount: ColumnsCount;
-  isCensored: boolean;
-}
-
-const STORAGE_KEY = "view-settings";
 const DEFAULT_SETTINGS: ViewSettings = {
   columnsCount: 5,
   isCensored: false,
@@ -26,35 +25,23 @@ export const setColumnsCount = createEvent<ColumnsCount>();
 export const toggleCensorship = createEvent<void>();
 
 // Effects
-export const loadFromLocalStorageFx = createEffect<void, ViewSettings, Error>(
+export const loadFromApiFx = createEffect<void, ViewSettings, Error>(
   async () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ViewSettings;
-        // Валидация данных
-        if (
-          typeof parsed.columnsCount === "number" &&
-          [3, 5, 7].includes(parsed.columnsCount) &&
-          typeof parsed.isCensored === "boolean"
-        ) {
-          return parsed;
-        }
-      }
-      return DEFAULT_SETTINGS;
+      return await getViewSettings();
     } catch (error) {
-      console.error("Ошибка загрузки настроек из localStorage:", error);
+      console.error("Ошибка загрузки настроек отображения:", error);
       return DEFAULT_SETTINGS;
     }
   }
 );
 
-export const saveToLocalStorageFx = createEffect<ViewSettings, void, Error>(
+export const saveToApiFx = createEffect<ViewSettings, ViewSettings, Error>(
   async (settings) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      return await updateViewSettings(settings);
     } catch (error) {
-      console.error("Ошибка сохранения настроек в localStorage:", error);
+      console.error("Ошибка сохранения настроек отображения:", error);
       throw error;
     }
   }
@@ -64,29 +51,42 @@ export const saveToLocalStorageFx = createEffect<ViewSettings, void, Error>(
 $columnsCount.on(setColumnsCount, (_, count) => count);
 $isCensored.on(toggleCensorship, (current) => !current);
 
-// Загрузка из localStorage
+// Загрузка из API
 sample({
-  clock: loadFromLocalStorageFx.doneData,
+  clock: loadFromApiFx.doneData,
   fn: (settings) => settings.columnsCount,
   target: $columnsCount,
 });
 
 sample({
-  clock: loadFromLocalStorageFx.doneData,
+  clock: loadFromApiFx.doneData,
   fn: (settings) => settings.isCensored,
   target: $isCensored,
 });
 
 sample({
-  clock: loadFromLocalStorageFx.finally,
+  clock: loadFromApiFx.finally,
   fn: () => true,
   target: $isLocalStorageLoaded,
 });
 
-// Сохранение в localStorage при изменении настроек
+// Сохранение в API при изменении настроек
 sample({
   clock: [setColumnsCount, toggleCensorship],
   source: { columnsCount: $columnsCount, isCensored: $isCensored },
   fn: ({ columnsCount, isCensored }) => ({ columnsCount, isCensored }),
-  target: saveToLocalStorageFx,
+  target: saveToApiFx,
+});
+
+// Обновление stores после успешного сохранения на сервере
+sample({
+  clock: saveToApiFx.doneData,
+  fn: (settings) => settings.columnsCount,
+  target: $columnsCount,
+});
+
+sample({
+  clock: saveToApiFx.doneData,
+  fn: (settings) => settings.isCensored,
+  target: $isCensored,
 });

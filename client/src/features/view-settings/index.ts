@@ -5,7 +5,7 @@ export {
   $isLocalStorageLoaded,
   setColumnsCount,
   toggleCensorship,
-  loadFromLocalStorageFx,
-  saveToLocalStorageFx,
+  loadFromApiFx,
+  saveToApiFx,
 } from "./model";
 export type { ColumnsCount } from "./model";

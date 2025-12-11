@@ -2,15 +2,12 @@ import { useEffect } from "react";
 import { Stack, Box, Container } from "@mantine/core";
 import { useUnit } from "effector-react";
 import { loadCardsFx } from "@/entities/cards";
-import { loadFromLocalStorageFx } from "@/features/view-settings";
+import { loadFromApiFx } from "@/features/view-settings";
 import { ViewSettingsPanel } from "@/features/view-settings";
 import { CardsGrid } from "@/features/cards-grid";
 
 export function HomePage() {
-  const [loadCards, loadSettings] = useUnit([
-    loadCardsFx,
-    loadFromLocalStorageFx,
-  ]);
+  const [loadCards, loadSettings] = useUnit([loadCardsFx, loadFromApiFx]);
 
   useEffect(() => {
     loadSettings();
