@@ -45,7 +45,7 @@ export function Card({ card }: CardProps) {
             fit="cover"
             loading="lazy"
             style={{
-              filter: isCensored ? "blur(12px)" : "none",
+              filter: isCensored ? "blur(18px)" : "none",
               transition: "filter 0.3s ease",
             }}
             onError={(e) => {

@@ -33,6 +33,7 @@ export interface SearchCardsParams {
   has_scenario?: TriState;
   has_mes_example?: TriState;
   has_character_book?: TriState;
+  has_alternate_greetings?: TriState;
   alternate_greetings_min?: number;
 }
 
@@ -117,6 +118,17 @@ export class CardsService {
     addTriState("c.has_scenario", params.has_scenario);
     addTriState("c.has_mes_example", params.has_mes_example);
     addTriState("c.has_character_book", params.has_character_book);
+
+    if (
+      params.has_alternate_greetings &&
+      params.has_alternate_greetings !== "any"
+    ) {
+      if (params.has_alternate_greetings === "1") {
+        where.push(`c.alternate_greetings_count >= 1`);
+      } else {
+        where.push(`c.alternate_greetings_count = 0`);
+      }
+    }
 
     if (
       typeof params.alternate_greetings_min === "number" &&

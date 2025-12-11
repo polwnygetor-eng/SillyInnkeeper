@@ -46,6 +46,8 @@ export async function getCards(query?: CardsQuery): Promise<CardListItem[]> {
     params.set("has_mes_example", query.has_mes_example);
   if (query?.has_character_book)
     params.set("has_character_book", query.has_character_book);
+  if (query?.has_alternate_greetings)
+    params.set("has_alternate_greetings", query.has_alternate_greetings);
 
   if (typeof query?.alternate_greetings_min === "number")
     params.set(

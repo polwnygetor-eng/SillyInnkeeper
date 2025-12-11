@@ -30,6 +30,7 @@ export interface CardsFiltersState {
   has_scenario: TriState;
   has_mes_example: TriState;
   has_character_book: TriState;
+  has_alternate_greetings: TriState;
   alternate_greetings_min: number;
 }
 
@@ -48,6 +49,7 @@ const DEFAULT_FILTERS: CardsFiltersState = {
   has_scenario: "any",
   has_mes_example: "any",
   has_character_book: "any",
+  has_alternate_greetings: "any",
   alternate_greetings_min: 0,
 };
 
@@ -71,6 +73,15 @@ function toQuery(state: CardsFiltersState): CardsQuery {
     ? toLocalDayEndMs(state.created_to)
     : undefined;
 
+  const min = state.alternate_greetings_min;
+  const hasAlt = state.has_alternate_greetings;
+  // Логика:
+  // - has=1 => count >= max(1, min)
+  // - has=0 => count = 0 (min игнорируется)
+  // - has=any => если min>0 => count >= min
+  const effectiveMin =
+    hasAlt === "1" ? Math.max(1, min) : hasAlt === "0" ? 0 : min;
+
   const query: CardsQuery = {
     sort: state.sort,
     name: state.name,
@@ -86,7 +97,9 @@ function toQuery(state: CardsFiltersState): CardsQuery {
     has_scenario: state.has_scenario,
     has_mes_example: state.has_mes_example,
     has_character_book: state.has_character_book,
-    alternate_greetings_min: state.alternate_greetings_min,
+    has_alternate_greetings: state.has_alternate_greetings,
+    alternate_greetings_min:
+      hasAlt === "0" ? undefined : effectiveMin > 0 ? effectiveMin : undefined,
   };
 
   return query;
@@ -126,6 +139,7 @@ export const setHasPersonality = createEvent<TriState>();
 export const setHasScenario = createEvent<TriState>();
 export const setHasMesExample = createEvent<TriState>();
 export const setHasCharacterBook = createEvent<TriState>();
+export const setHasAlternateGreetings = createEvent<TriState>();
 export const setAlternateGreetingsMin = createEvent<number>();
 export const resetFilters = createEvent<void>();
 export const applyFilters = createEvent<void>();
@@ -156,6 +170,10 @@ $filters
   .on(setHasCharacterBook, (s, has_character_book) => ({
     ...s,
     has_character_book,
+  }))
+  .on(setHasAlternateGreetings, (s, has_alternate_greetings) => ({
+    ...s,
+    has_alternate_greetings,
   }))
   .on(setAlternateGreetingsMin, (s, alternate_greetings_min) => ({
     ...s,
@@ -202,6 +220,7 @@ const immediateApplyClock = [
   setHasScenario,
   setHasMesExample,
   setHasCharacterBook,
+  setHasAlternateGreetings,
   setAlternateGreetingsMin,
 ];
 

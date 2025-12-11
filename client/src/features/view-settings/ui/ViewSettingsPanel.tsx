@@ -1,4 +1,11 @@
-import { Paper, Group, SegmentedControl, Switch, Text } from "@mantine/core";
+import {
+  Paper,
+  Group,
+  SegmentedControl,
+  Switch,
+  Text,
+  Highlight,
+} from "@mantine/core";
 import { useUnit } from "effector-react";
 import {
   $columnsCount,
@@ -18,7 +25,7 @@ export function ViewSettingsPanel() {
   ]);
 
   return (
-    <Paper shadow="sm" p="md" radius="md" withBorder mb="xl">
+    <Paper shadow="sm" p="md" radius="md" withBorder>
       <Group justify="space-between" align="center">
         <Group gap="lg">
           <Group gap="xs">
@@ -35,7 +42,11 @@ export function ViewSettingsPanel() {
               ]}
             />
           </Group>
-          <Text size="sm">Карточек: {cards.length}</Text>
+          <Text size="sm">
+            <Highlight
+              highlight={`${cards.length}`}
+            >{`Карточек: ${cards.length}`}</Highlight>
+          </Text>
         </Group>
 
         <Group gap="xs">

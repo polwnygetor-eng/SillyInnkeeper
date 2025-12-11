@@ -131,6 +131,9 @@ router.get("/cards", async (req: Request, res: Response) => {
       has_scenario: parseTriState((req.query as any).has_scenario),
       has_mes_example: parseTriState((req.query as any).has_mes_example),
       has_character_book: parseTriState((req.query as any).has_character_book),
+      has_alternate_greetings: parseTriState(
+        (req.query as any).has_alternate_greetings
+      ),
       alternate_greetings_min:
         typeof alternateGreetingsMin === "number" && alternateGreetingsMin >= 0
           ? alternateGreetingsMin

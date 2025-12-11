@@ -21,5 +21,6 @@ export interface CardsQuery {
   has_scenario?: TriState;
   has_mes_example?: TriState;
   has_character_book?: TriState;
+  has_alternate_greetings?: TriState;
   alternate_greetings_min?: number;
 }
