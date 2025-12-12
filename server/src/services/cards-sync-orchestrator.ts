@@ -44,6 +44,11 @@ export class CardsSyncOrchestrator {
       while (true) {
         this.requestedAgain = false;
         const startedAt = Date.now();
+        logger.info(
+          `scan:start origin=${currentOrigin} at=${new Date(
+            startedAt
+          ).toISOString()} path="${currentPath}"`
+        );
 
         const dbService = createDatabaseService(this.db);
         const beforeRow = dbService.queryOne<{ count: number }>(
@@ -62,6 +67,11 @@ export class CardsSyncOrchestrator {
         const addedCards = Math.max(0, after - before);
         const removedCards = Math.max(0, before - after);
         const finishedAt = Date.now();
+        logger.info(
+          `scan:done origin=${currentOrigin} at=${new Date(
+            finishedAt
+          ).toISOString()} durationMs=${finishedAt - startedAt} path="${currentPath}"`
+        );
 
         this.revision += 1;
         const payload: CardsResyncedPayload = {

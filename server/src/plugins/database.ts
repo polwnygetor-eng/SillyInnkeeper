@@ -71,6 +71,7 @@ function initializeSchema(db: Database.Database): void {
       file_path TEXT PRIMARY KEY,
       card_id TEXT NOT NULL,
       file_mtime INTEGER NOT NULL,
+      file_birthtime INTEGER NOT NULL,
       file_size INTEGER NOT NULL,
       FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
     );
@@ -176,6 +177,13 @@ function initializeSchema(db: Database.Database): void {
 
   // card_files: folder_path для фильтрации/группировки по папкам
   addColumnIfMissing("card_files", "folder_path", "folder_path TEXT");
+  // card_files: file_birthtime — время создания файла (нужно для корректного created_at карточки)
+  // NOT NULL + DEFAULT нужен для старых БД.
+  addColumnIfMissing(
+    "card_files",
+    "file_birthtime",
+    "file_birthtime INTEGER NOT NULL DEFAULT 0"
+  );
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_card_files_folder_path ON card_files(folder_path);
   `);

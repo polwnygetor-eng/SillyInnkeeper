@@ -94,15 +94,23 @@ export class ScanService {
       // Получаем статистику файла
       const stats = statSync(filePath);
       const fileMtime = stats.mtimeMs;
+      const fileBirthtime = stats.birthtimeMs;
       const fileSize = stats.size;
+      // created_at хотим синхронизировать с "датой создания файла" (как в проводнике Windows).
+      // На некоторых ФС/сценариях birthtime может быть 0/NaN — тогда используем mtimeMs как fallback.
+      const fileCreatedAt =
+        Number.isFinite(fileBirthtime) && fileBirthtime > 0
+          ? fileBirthtime
+          : fileMtime;
 
       // Проверяем, изменился ли файл
       const existingFile = this.dbService.queryOne<{
         card_id: string;
         file_mtime: number;
+        file_birthtime: number;
         file_size: number;
       }>(
-        "SELECT card_id, file_mtime, file_size FROM card_files WHERE file_path = ?",
+        "SELECT card_id, file_mtime, file_birthtime, file_size FROM card_files WHERE file_path = ?",
         [filePath]
       );
 
@@ -110,6 +118,7 @@ export class ScanService {
       if (
         existingFile &&
         existingFile.file_mtime === fileMtime &&
+        existingFile.file_birthtime === fileCreatedAt &&
         existingFile.file_size === fileSize
       ) {
         return;
@@ -193,7 +202,7 @@ export class ScanService {
 
       // Сохраняем оригинальные данные для экспорта
       const dataJson = JSON.stringify(extractedData.original_data);
-      const createdAt = Date.now();
+      const createdAt = fileCreatedAt;
 
       // Записываем в БД в транзакции
       this.dbService.transaction((db) => {
@@ -210,6 +219,7 @@ export class ScanService {
               creator = ?, 
               spec_version = ?, 
               avatar_path = ?, 
+              created_at = ?,
               data_json = ?,
               personality = ?,
               scenario = ?,
@@ -234,6 +244,7 @@ export class ScanService {
               creator,
               specVersion,
               avatarPath,
+              createdAt,
               dataJson,
               personality,
               scenario,
@@ -258,10 +269,11 @@ export class ScanService {
           dbService.execute(
             `UPDATE card_files SET 
               file_mtime = ?, 
+              file_birthtime = ?,
               file_size = ?,
               folder_path = ?
             WHERE file_path = ?`,
-            [fileMtime, fileSize, dirname(filePath), filePath]
+            [fileMtime, createdAt, fileSize, dirname(filePath), filePath]
           );
         } else {
           // Создаем новую карточку
@@ -322,9 +334,9 @@ export class ScanService {
 
           // Создаем запись о файле
           dbService.execute(
-            `INSERT INTO card_files (file_path, card_id, file_mtime, file_size, folder_path)
-            VALUES (?, ?, ?, ?, ?)`,
-            [filePath, cardId, fileMtime, fileSize, dirname(filePath)]
+            `INSERT INTO card_files (file_path, card_id, file_mtime, file_birthtime, file_size, folder_path)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [filePath, cardId, fileMtime, createdAt, fileSize, dirname(filePath)]
           );
         }
 
