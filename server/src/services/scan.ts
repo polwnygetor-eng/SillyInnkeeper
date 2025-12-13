@@ -3,13 +3,38 @@ import { statSync, existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { readdir as readdirAsync, writeFile, ensureDir } from "fs-extra";
 import pLimit from "p-limit";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { createDatabaseService, DatabaseService } from "./database";
 import { CardParser } from "./card-parser";
 import { generateThumbnail, deleteThumbnail } from "./thumbnail";
 import { createTagService } from "./tags";
 
 const CONCURRENT_LIMIT = 5;
+
+function canonicalizeForHash(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.map(canonicalizeForHash);
+  if (typeof value !== "object") return value;
+
+  const obj = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const key of Object.keys(obj).sort()) {
+    // CCv3: игнорируем поля, которые часто меняются при переэкспорте
+    if (key === "creation_date" || key === "modification_date") continue;
+    out[key] = canonicalizeForHash(obj[key]);
+  }
+
+  // CCv3: поля creation_date/modification_date лежат обычно в card.data
+  // (снаружи тоже может встретиться — игнорим в любом месте)
+  return out;
+}
+
+function computeContentHash(cardOriginalData: unknown): string {
+  const canonical = canonicalizeForHash(cardOriginalData);
+  const json = JSON.stringify(canonical);
+  return createHash("sha256").update(json, "utf8").digest("hex");
+}
 
 /**
  * Сервис для сканирования папки с карточками и синхронизации с базой данных
@@ -19,7 +44,10 @@ export class ScanService {
   private scannedFiles = new Set<string>();
   private cardParser: CardParser;
 
-  constructor(private dbService: DatabaseService) {
+  constructor(
+    private dbService: DatabaseService,
+    private libraryId: string = "cards"
+  ) {
     this.cardParser = new CardParser();
   }
 
@@ -142,12 +170,30 @@ export class ScanService {
         return;
       }
 
-      // Определяем cardId: используем существующий или создаем новый
-      const cardId = existingFile ? existingFile.card_id : randomUUID();
+      // Хэш содержимого карточки (для дедупликации внутри libraryId)
+      const contentHash = computeContentHash(extractedData.original_data);
+
+      // Определяем cardId:
+      // - если файл уже в БД (по file_path) -> используем его card_id
+      // - иначе ищем существующую карточку по (library_id, content_hash)
+      // - иначе создаём новую
+      const existingByHash = !existingFile
+        ? this.dbService.queryOne<{ id: string; avatar_path: string | null }>(
+            `SELECT id, avatar_path FROM cards WHERE library_id = ? AND content_hash = ? LIMIT 1`,
+            [this.libraryId, contentHash]
+          )
+        : undefined;
+
+      let isDuplicateByHash = Boolean(existingByHash?.id);
+      const createdNewCard = !existingFile && !existingByHash?.id;
+      let cardId: string = existingFile
+        ? existingFile.card_id
+        : existingByHash?.id ?? randomUUID();
+      let postCommitEnsureAvatarFor: string | null = null;
 
       // Генерируем миниатюру (только если карточка новая или миниатюра отсутствует)
       let avatarPath: string | null = null;
-      if (!existingFile) {
+      if (!existingFile && createdNewCard) {
         avatarPath = await generateThumbnail(filePath, cardId);
       } else {
         // Проверяем, есть ли уже миниатюра
@@ -250,6 +296,8 @@ export class ScanService {
           // Обновляем карточку
           dbService.execute(
             `UPDATE cards SET 
+              library_id = ?,
+              content_hash = ?,
               name = ?, 
               description = ?, 
               tags = ?, 
@@ -276,6 +324,8 @@ export class ScanService {
               prompt_tokens_est = ?
             WHERE id = ?`,
             [
+              this.libraryId,
+              contentHash,
               name,
               description,
               tags,
@@ -315,65 +365,114 @@ export class ScanService {
             [fileMtime, createdAt, fileSize, dirname(filePath), filePath]
           );
         } else {
-          // Создаем новую карточку
-          dbService.execute(
-            `INSERT INTO cards (
-              id,
-              name,
-              description,
-              tags,
-              creator,
-              spec_version,
-              avatar_path,
-              created_at,
-              data_json,
-              personality,
-              scenario,
-              first_mes,
-              mes_example,
-              creator_notes,
-              system_prompt,
-              post_history_instructions,
-              alternate_greetings_count,
-              has_creator_notes,
-              has_system_prompt,
-              has_post_history_instructions,
-              has_personality,
-              has_scenario,
-              has_mes_example,
-              has_character_book,
-              prompt_tokens_est
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              cardId,
-              name,
-              description,
-              tags,
-              creator,
-              specVersion,
-              avatarPath,
-              createdAt,
-              dataJson,
-              personality,
-              scenario,
-              firstMes,
-              mesExample,
-              creatorNotes,
-              systemPrompt,
-              postHistoryInstructions,
-              alternateGreetingsCount,
-              hasCreatorNotes,
-              hasSystemPrompt,
-              hasPostHistoryInstructions,
-              hasPersonality,
-              hasScenario,
-              hasMesExample,
-              hasCharacterBook,
-              promptTokensEst,
-            ]
-          );
+          // Для новых file_path: либо создаём карточку, либо привязываем к существующей по (library_id, content_hash).
+          if (createdNewCard && cardId) {
+            try {
+              dbService.execute(
+                `INSERT INTO cards (
+                  id,
+                  library_id,
+                  content_hash,
+                  name,
+                  description,
+                  tags,
+                  creator,
+                  spec_version,
+                  avatar_path,
+                  created_at,
+                  data_json,
+                  personality,
+                  scenario,
+                  first_mes,
+                  mes_example,
+                  creator_notes,
+                  system_prompt,
+                  post_history_instructions,
+                  alternate_greetings_count,
+                  has_creator_notes,
+                  has_system_prompt,
+                  has_post_history_instructions,
+                  has_personality,
+                  has_scenario,
+                  has_mes_example,
+                  has_character_book,
+                  prompt_tokens_est
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  cardId,
+                  this.libraryId,
+                  contentHash,
+                  name,
+                  description,
+                  tags,
+                  creator,
+                  specVersion,
+                  avatarPath,
+                  createdAt,
+                  dataJson,
+                  personality,
+                  scenario,
+                  firstMes,
+                  mesExample,
+                  creatorNotes,
+                  systemPrompt,
+                  postHistoryInstructions,
+                  alternateGreetingsCount,
+                  hasCreatorNotes,
+                  hasSystemPrompt,
+                  hasPostHistoryInstructions,
+                  hasPersonality,
+                  hasScenario,
+                  hasMesExample,
+                  hasCharacterBook,
+                  promptTokensEst,
+                ]
+              );
+            } catch (e) {
+              // Гонка: другая задача успела вставить ту же карточку (library_id, content_hash).
+              const dup = dbService.queryOne<{
+                id: string;
+                avatar_path: string | null;
+              }>(
+                `SELECT id, avatar_path FROM cards WHERE library_id = ? AND content_hash = ? LIMIT 1`,
+                [this.libraryId, contentHash]
+              );
+              if (!dup?.id) throw e;
 
-          // Создаем запись о файле
+              // Помечаем как дубль и переиспользуем существующий cardId
+              isDuplicateByHash = true;
+              postCommitEnsureAvatarFor = dup.avatar_path ? null : dup.id;
+
+              // Если мы уже сгенерировали миниатюру для "лишнего" id, удалим её,
+              // а при необходимости сгенерируем для существующей карточки.
+              if (avatarPath) {
+                const createdUuid = avatarPath
+                  .split("/")
+                  .pop()
+                  ?.replace(".webp", "");
+                if (createdUuid) {
+                  // best-effort cleanup
+                  void deleteThumbnail(createdUuid);
+                }
+              }
+
+              cardId = dup.id;
+            }
+          }
+
+          if (!cardId) throw new Error("cardId is not resolved");
+
+          // Если это дубль по хэшу (или мы его таким определили в гонке),
+          // и миниатюра была сгенерирована (или уже существует), гарантируем,
+          // что avatar_path у карточки заполнен (не перетирая существующее).
+          if (isDuplicateByHash && avatarPath) {
+            dbService.execute(
+              `UPDATE cards SET avatar_path = COALESCE(avatar_path, ?) WHERE id = ?`,
+              [avatarPath, cardId]
+            );
+          }
+
+          // Привязываем файл к cardId (и для новой карточки, и для дубля по хэшу)
           dbService.execute(
             `INSERT INTO card_files (file_path, card_id, file_mtime, file_birthtime, file_size, folder_path)
             VALUES (?, ?, ?, ?, ?, ?)`,
@@ -433,6 +532,22 @@ export class ScanService {
           },
         };
         await writeFile(jsonPath, JSON.stringify(jsonData, null, 2), "utf-8");
+      }
+
+      // В редких случаях гонки, если карточка была создана параллельно без avatar_path,
+      // попробуем добить миниатюру уже после транзакции.
+      if (postCommitEnsureAvatarFor) {
+        const current = this.dbService.queryOne<{ avatar_path: string | null }>(
+          "SELECT avatar_path FROM cards WHERE id = ?",
+          [postCommitEnsureAvatarFor]
+        );
+        if (!current?.avatar_path) {
+          const p = await generateThumbnail(filePath, postCommitEnsureAvatarFor);
+          this.dbService.execute(
+            "UPDATE cards SET avatar_path = ? WHERE id = ?",
+            [p, postCommitEnsureAvatarFor]
+          );
+        }
       }
     } catch (error) {
       console.error(`Ошибка при обработке файла ${filePath}:`, error);
@@ -539,7 +654,10 @@ export class ScanService {
 /**
  * Создает экземпляр ScanService из экземпляра Database
  */
-export function createScanService(db: Database.Database): ScanService {
+export function createScanService(
+  db: Database.Database,
+  libraryId: string = "cards"
+): ScanService {
   const dbService = createDatabaseService(db);
-  return new ScanService(dbService);
+  return new ScanService(dbService, libraryId);
 }

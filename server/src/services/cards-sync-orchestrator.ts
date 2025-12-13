@@ -21,23 +21,34 @@ export class CardsSyncOrchestrator {
   private requestedAgain = false;
   private revision = 0;
   private lastFolderPath: string | null = null;
+  private lastLibraryId: string | null = null;
 
   constructor(private db: Database.Database, private hub: SseHub) {}
 
-  requestScan(origin: SyncOrigin, folderPath: string): void {
+  requestScan(
+    origin: SyncOrigin,
+    folderPath: string,
+    libraryId: string = "cards"
+  ): void {
     this.lastFolderPath = folderPath;
+    this.lastLibraryId = libraryId;
     if (this.running) {
       this.requestedAgain = true;
       return;
     }
-    void this.runLoop(origin, folderPath);
+    void this.runLoop(origin, folderPath, libraryId);
   }
 
-  private async runLoop(origin: SyncOrigin, folderPath: string): Promise<void> {
+  private async runLoop(
+    origin: SyncOrigin,
+    folderPath: string,
+    libraryId: string
+  ): Promise<void> {
     this.running = true;
     try {
       let currentOrigin: SyncOrigin = origin;
       let currentPath = folderPath;
+      let currentLibraryId = libraryId;
 
       // loop if events arrived during scan
       // eslint-disable-next-line no-constant-condition
@@ -56,7 +67,7 @@ export class CardsSyncOrchestrator {
         );
         const before = beforeRow?.count ?? 0;
 
-        const scanService = createScanService(this.db);
+        const scanService = createScanService(this.db, currentLibraryId);
         await scanService.scanFolder(currentPath);
 
         const afterRow = dbService.queryOne<{ count: number }>(
@@ -70,7 +81,9 @@ export class CardsSyncOrchestrator {
         logger.info(
           `scan:done origin=${currentOrigin} at=${new Date(
             finishedAt
-          ).toISOString()} durationMs=${finishedAt - startedAt} path="${currentPath}"`
+          ).toISOString()} durationMs=${
+            finishedAt - startedAt
+          } path="${currentPath}"`
         );
 
         this.revision += 1;
@@ -95,6 +108,7 @@ export class CardsSyncOrchestrator {
         // run again immediately with the latest known folderPath
         currentOrigin = "fs";
         currentPath = this.lastFolderPath ?? currentPath;
+        currentLibraryId = this.lastLibraryId ?? currentLibraryId;
       }
     } catch (error) {
       logger.error(error, "Ошибка в CardsSyncOrchestrator");
@@ -104,5 +118,3 @@ export class CardsSyncOrchestrator {
     }
   }
 }
-
-

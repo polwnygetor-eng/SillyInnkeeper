@@ -49,7 +49,7 @@ export async function initializeScannerWithOrchestrator(
       existsSync(settings.cardsFolderPath)
     ) {
       logger.info(`Автозапуск сканирования папки: ${settings.cardsFolderPath}`);
-      orchestrator.requestScan("app", settings.cardsFolderPath);
+      orchestrator.requestScan("app", settings.cardsFolderPath, "cards");
     }
   } catch (error) {
     logger.error(

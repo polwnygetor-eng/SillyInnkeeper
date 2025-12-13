@@ -35,7 +35,7 @@ export class FsWatcherService {
         this.debounceTimer = null;
         if (!this.currentPath) return;
         logger.info(`FS watcher trigger scan (${reason})`);
-        this.orchestrator.requestScan("fs", this.currentPath);
+        this.orchestrator.requestScan("fs", this.currentPath, "cards");
       }, this.debounceMs);
     };
 

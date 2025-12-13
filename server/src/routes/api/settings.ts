@@ -76,7 +76,7 @@ router.put("/settings", async (req: Request, res: Response) => {
     if (nextPath !== null) {
       try {
         void getDb(req);
-        getOrchestrator(req).requestScan("app", nextPath);
+        getOrchestrator(req).requestScan("app", nextPath, "cards");
       } catch (error) {
         logger.error(error, "Ошибка при запуске синхронизации после settings");
       }

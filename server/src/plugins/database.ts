@@ -54,8 +54,12 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
     
     -- Таблица карточек (метаданные)
+    -- library_id: логический источник/библиотека (например 'cards', 'sillytavern')
+    -- content_hash: sha256 каноникализации метаданных карточки (для дедупликации внутри library_id)
     CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
+      library_id TEXT NOT NULL DEFAULT 'cards',
+      content_hash TEXT,
       name TEXT,
       description TEXT,
       tags TEXT,
@@ -109,6 +113,12 @@ function initializeSchema(db: Database.Database): void {
   };
 
   // cards: дополнительные поля + флаги наличия + счётчики
+  addColumnIfMissing(
+    "cards",
+    "library_id",
+    "library_id TEXT NOT NULL DEFAULT 'cards'"
+  );
+  addColumnIfMissing("cards", "content_hash", "content_hash TEXT");
   addColumnIfMissing("cards", "personality", "personality TEXT");
   addColumnIfMissing("cards", "scenario", "scenario TEXT");
   addColumnIfMissing("cards", "first_mes", "first_mes TEXT");
@@ -170,6 +180,8 @@ function initializeSchema(db: Database.Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_cards_creator ON cards(creator);
     CREATE INDEX IF NOT EXISTS idx_cards_spec_version ON cards(spec_version);
+    CREATE INDEX IF NOT EXISTS idx_cards_library_id ON cards(library_id);
+    CREATE INDEX IF NOT EXISTS idx_cards_content_hash ON cards(content_hash);
     CREATE INDEX IF NOT EXISTS idx_cards_has_creator_notes ON cards(has_creator_notes);
     CREATE INDEX IF NOT EXISTS idx_cards_has_system_prompt ON cards(has_system_prompt);
     CREATE INDEX IF NOT EXISTS idx_cards_has_post_history_instructions ON cards(has_post_history_instructions);
@@ -179,6 +191,13 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_cards_has_character_book ON cards(has_character_book);
     CREATE INDEX IF NOT EXISTS idx_cards_alternate_greetings_count ON cards(alternate_greetings_count);
     CREATE INDEX IF NOT EXISTS idx_cards_prompt_tokens_est ON cards(prompt_tokens_est);
+  `);
+
+  // Уникальность для дедупликации внутри библиотеки.
+  // Для старых БД content_hash может быть NULL — SQLite допускает много NULL в UNIQUE, это нормально.
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_cards_library_hash
+    ON cards(library_id, content_hash);
   `);
 
   // card_files: folder_path для фильтрации/группировки по папкам
