@@ -8,6 +8,8 @@ import type {
   TriState,
 } from "../../services/cards";
 import { createCardsFiltersService } from "../../services/cards-filters";
+import { getSettings } from "../../services/settings";
+import { getOrCreateLibraryId } from "../../services/libraries";
 
 const router = Router();
 
@@ -80,6 +82,14 @@ router.get("/cards", async (req: Request, res: Response) => {
   try {
     const db = getDb(req);
     const cardsService = createCardsService(db);
+    const settings = await getSettings();
+
+    if (!settings.cardsFolderPath) {
+      res.json([]);
+      return;
+    }
+
+    const libraryId = getOrCreateLibraryId(db, settings.cardsFolderPath);
 
     const sortRaw = parseString(req.query.sort);
     const sort: CardsSort | undefined =
@@ -135,6 +145,7 @@ router.get("/cards", async (req: Request, res: Response) => {
     const promptTokensMax = parseNumber((req.query as any).prompt_tokens_max);
 
     const params: SearchCardsParams = {
+      library_id: libraryId,
       sort,
       name,
       creators: creators.length > 0 ? creators : undefined,
@@ -181,7 +192,15 @@ router.get("/cards/filters", async (req: Request, res: Response) => {
   try {
     const db = getDb(req);
     const filtersService = createCardsFiltersService(db);
-    res.json(filtersService.getFilters());
+    const settings = await getSettings();
+
+    if (!settings.cardsFolderPath) {
+      res.json({ creators: [], spec_versions: [], tags: [] });
+      return;
+    }
+
+    const libraryId = getOrCreateLibraryId(db, settings.cardsFolderPath);
+    res.json(filtersService.getFilters(libraryId));
   } catch (error) {
     logger.error(error, "Ошибка при получении данных фильтров карточек");
     res

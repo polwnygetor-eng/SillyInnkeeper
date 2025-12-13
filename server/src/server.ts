@@ -5,6 +5,7 @@ import { logger } from "./utils/logger";
 import Database from "better-sqlite3";
 import { getSettings } from "./services/settings";
 import { existsSync } from "node:fs";
+import { getOrCreateLibraryId } from "./services/libraries";
 import type { SseHub } from "./services/sse-hub";
 import type { FsWatcherService } from "./services/fs-watcher";
 import type { CardsSyncOrchestrator } from "./services/cards-sync-orchestrator";
@@ -25,7 +26,7 @@ async function startServer(): Promise<void> {
       logger.info(`Сервер запущен на порту ${PORT}`);
 
       // Инициализируем сканер после запуска сервера
-      initializeScannerWithOrchestrator(orchestrator).catch((error) => {
+      initializeScannerWithOrchestrator(orchestrator, db).catch((error) => {
         logger.error(error, "Ошибка при инициализации сканера");
       });
 
@@ -34,7 +35,8 @@ async function startServer(): Promise<void> {
         .then((settings) => {
           const p = settings.cardsFolderPath;
           if (p && existsSync(p)) {
-            fsWatcher.start(p);
+            const libraryId = getOrCreateLibraryId(db, p);
+            fsWatcher.start(p, libraryId);
           }
         })
         .catch((error) => {

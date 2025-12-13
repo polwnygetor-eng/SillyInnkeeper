@@ -52,6 +52,17 @@ function initializeSchema(db: Database.Database): void {
     );
     
     CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+
+    -- Таблица библиотек (папок)
+    -- folder_path хранится в нормализованном виде (см. services/libraries.ts)
+    CREATE TABLE IF NOT EXISTS libraries (
+      id TEXT PRIMARY KEY,
+      folder_path TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_libraries_folder_path ON libraries(folder_path);
     
     -- Таблица карточек (метаданные)
     -- library_id: логический источник/библиотека (например 'cards', 'sillytavern')

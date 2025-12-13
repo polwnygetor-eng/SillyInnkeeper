@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { getSettings } from "../services/settings";
 import { logger } from "../utils/logger";
 import type { CardsSyncOrchestrator } from "../services/cards-sync-orchestrator";
+import { getOrCreateLibraryId } from "../services/libraries";
 
 /**
  * Инициализирует автоматическое сканирование при старте сервера
@@ -40,7 +41,8 @@ export async function initializeScanner(db: Database.Database): Promise<void> {
 }
 
 export async function initializeScannerWithOrchestrator(
-  orchestrator: CardsSyncOrchestrator
+  orchestrator: CardsSyncOrchestrator,
+  db: Database.Database
 ): Promise<void> {
   try {
     const settings = await getSettings();
@@ -49,7 +51,8 @@ export async function initializeScannerWithOrchestrator(
       existsSync(settings.cardsFolderPath)
     ) {
       logger.info(`Автозапуск сканирования папки: ${settings.cardsFolderPath}`);
-      orchestrator.requestScan("app", settings.cardsFolderPath, "cards");
+      const libraryId = getOrCreateLibraryId(db, settings.cardsFolderPath);
+      orchestrator.requestScan("app", settings.cardsFolderPath, libraryId);
     }
   } catch (error) {
     logger.error(

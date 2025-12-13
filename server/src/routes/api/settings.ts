@@ -6,6 +6,7 @@ import {
   Settings,
   validateLanguage,
 } from "../../services/settings";
+import { getOrCreateLibraryId } from "../../services/libraries";
 import { logger } from "../../utils/logger";
 import type { CardsSyncOrchestrator } from "../../services/cards-sync-orchestrator";
 import type { FsWatcherService } from "../../services/fs-watcher";
@@ -83,11 +84,17 @@ router.put("/settings", async (req: Request, res: Response) => {
 
     const prevPath = prevSettings.cardsFolderPath;
     const nextPath = savedSettings.cardsFolderPath;
+    const db = getDb(req);
 
     // Перезапускаем watcher, если путь изменился
     if (prevPath !== nextPath) {
       try {
-        getFsWatcher(req).restart(nextPath);
+        if (nextPath) {
+          const libraryId = getOrCreateLibraryId(db, nextPath);
+          getFsWatcher(req).restart(nextPath, libraryId);
+        } else {
+          getFsWatcher(req).restart(null);
+        }
       } catch (error) {
         logger.error(error, "Ошибка при перезапуске FS watcher");
       }
@@ -96,8 +103,8 @@ router.put("/settings", async (req: Request, res: Response) => {
     // Запускаем scan через orchestrator (мгновенно, без debounce)
     if (nextPath !== null) {
       try {
-        void getDb(req);
-        getOrchestrator(req).requestScan("app", nextPath, "cards");
+        const libraryId = getOrCreateLibraryId(db, nextPath);
+        getOrchestrator(req).requestScan("app", nextPath, libraryId);
       } catch (error) {
         logger.error(error, "Ошибка при запуске синхронизации после settings");
       }

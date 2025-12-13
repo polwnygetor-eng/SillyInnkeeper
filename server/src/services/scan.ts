@@ -55,10 +55,16 @@ export class ScanService {
    * Рекурсивно сканирует папку и обрабатывает все PNG файлы
    * @param folderPath Путь к папке для сканирования
    */
-  async scanFolder(folderPath: string): Promise<void> {
+  async scanFolder(
+    folderPath: string,
+    opts?: {
+      onStart?: (totalFiles: number) => void;
+      onProgress?: (processedFiles: number, totalFiles: number) => void;
+    }
+  ): Promise<{ totalFiles: number; processedFiles: number }> {
     if (!existsSync(folderPath)) {
       console.error(`Папка не существует: ${folderPath}`);
-      return;
+      return { totalFiles: 0, processedFiles: 0 };
     }
 
     console.log(`Начало сканирования папки: ${folderPath}`);
@@ -68,10 +74,31 @@ export class ScanService {
       // Рекурсивно получаем все файлы
       const files = await this.getAllPngFiles(folderPath);
       console.log(`Найдено ${files.length} PNG файлов`);
+      opts?.onStart?.(files.length);
+
+      const totalFiles = files.length;
+      let processedFiles = 0;
+      let lastProgressAt = 0;
+      const emitProgress = () => {
+        if (!opts?.onProgress) return;
+        const now = Date.now();
+        // Throttle progress updates to avoid spamming SSE/UI.
+        if (processedFiles >= totalFiles || now - lastProgressAt >= 300) {
+          lastProgressAt = now;
+          opts.onProgress(processedFiles, totalFiles);
+        }
+      };
 
       // Обрабатываем файлы с ограничением конкурентности
       const promises = files.map((file) =>
-        this.limit(() => this.processFile(file))
+        this.limit(async () => {
+          try {
+            await this.processFile(file);
+          } finally {
+            processedFiles += 1;
+            emitProgress();
+          }
+        })
       );
       await Promise.all(promises);
 
@@ -79,6 +106,13 @@ export class ScanService {
       await this.cleanupDeletedFiles();
 
       console.log(`Сканирование завершено. Обработано файлов: ${files.length}`);
+      // final progress snapshot
+      if (processedFiles !== totalFiles) {
+        processedFiles = totalFiles;
+      }
+      opts?.onProgress?.(processedFiles, totalFiles);
+
+      return { totalFiles, processedFiles };
     } catch (error) {
       console.error(`Ошибка при сканировании папки ${folderPath}:`, error);
       throw error;
@@ -476,7 +510,14 @@ export class ScanService {
           dbService.execute(
             `INSERT INTO card_files (file_path, card_id, file_mtime, file_birthtime, file_size, folder_path)
             VALUES (?, ?, ?, ?, ?, ?)`,
-            [filePath, cardId, fileMtime, createdAt, fileSize, dirname(filePath)]
+            [
+              filePath,
+              cardId,
+              fileMtime,
+              createdAt,
+              fileSize,
+              dirname(filePath),
+            ]
           );
         }
 
@@ -542,7 +583,10 @@ export class ScanService {
           [postCommitEnsureAvatarFor]
         );
         if (!current?.avatar_path) {
-          const p = await generateThumbnail(filePath, postCommitEnsureAvatarFor);
+          const p = await generateThumbnail(
+            filePath,
+            postCommitEnsureAvatarFor
+          );
           this.dbService.execute(
             "UPDATE cards SET avatar_path = ? WHERE id = ?",
             [p, postCommitEnsureAvatarFor]
@@ -559,11 +603,19 @@ export class ScanService {
    */
   private async cleanupDeletedFiles(): Promise<void> {
     try {
-      // Получаем все файлы из БД
+      // Получаем все файлы из БД только для текущей библиотеки
       const dbFiles = this.dbService.query<{
         file_path: string;
         card_id: string;
-      }>("SELECT file_path, card_id FROM card_files");
+      }>(
+        `
+        SELECT cf.file_path, cf.card_id
+        FROM card_files cf
+        JOIN cards c ON c.id = cf.card_id
+        WHERE c.library_id = ?
+      `,
+        [this.libraryId]
+      );
 
       const filesToDelete: Array<{ file_path: string; card_id: string }> = [];
 
@@ -625,13 +677,17 @@ export class ScanService {
       const orphanCards = this.dbService.query<{
         id: string;
         avatar_path: string | null;
-      }>(`
+      }>(
+        `
         SELECT c.id, c.avatar_path
         FROM cards c
-        WHERE NOT EXISTS (
+        WHERE c.library_id = ?
+        AND NOT EXISTS (
           SELECT 1 FROM card_files cf WHERE cf.card_id = c.id
         )
-      `);
+      `,
+        [this.libraryId]
+      );
 
       for (const orphan of orphanCards) {
         this.dbService.execute("DELETE FROM cards WHERE id = ?", [orphan.id]);

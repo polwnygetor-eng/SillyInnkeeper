@@ -9,8 +9,41 @@ export type SyncOrigin = "fs" | "app";
 export type CardsResyncedPayload = {
   revision: number;
   origin: SyncOrigin;
+  libraryId: string;
+  folderPath: string;
   addedCards: number;
   removedCards: number;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+};
+
+export type CardsScanStartedPayload = {
+  revision: number;
+  origin: SyncOrigin;
+  libraryId: string;
+  folderPath: string;
+  totalFiles: number;
+  startedAt: number;
+};
+
+export type CardsScanProgressPayload = {
+  revision: number;
+  origin: SyncOrigin;
+  libraryId: string;
+  folderPath: string;
+  processedFiles: number;
+  totalFiles: number;
+  updatedAt: number;
+};
+
+export type CardsScanFinishedPayload = {
+  revision: number;
+  origin: SyncOrigin;
+  libraryId: string;
+  folderPath: string;
+  processedFiles: number;
+  totalFiles: number;
   startedAt: number;
   finishedAt: number;
   durationMs: number;
@@ -55,6 +88,7 @@ export class CardsSyncOrchestrator {
       while (true) {
         this.requestedAgain = false;
         const startedAt = Date.now();
+        const scanRevision = this.revision + 1;
         logger.info(
           `scan:start origin=${currentOrigin} at=${new Date(
             startedAt
@@ -63,21 +97,94 @@ export class CardsSyncOrchestrator {
 
         const dbService = createDatabaseService(this.db);
         const beforeRow = dbService.queryOne<{ count: number }>(
-          "SELECT COUNT(*) as count FROM cards"
+          "SELECT COUNT(*) as count FROM cards WHERE library_id = ?",
+          [currentLibraryId]
         );
         const before = beforeRow?.count ?? 0;
 
         const scanService = createScanService(this.db, currentLibraryId);
-        await scanService.scanFolder(currentPath);
+        let totalFiles = 0;
+        let processedFiles = 0;
+        let startedSent = false;
+
+        const scanResult = await scanService.scanFolder(currentPath, {
+          onStart: (total) => {
+            totalFiles = total;
+            startedSent = true;
+            const payload: CardsScanStartedPayload = {
+              revision: scanRevision,
+              origin: currentOrigin,
+              libraryId: currentLibraryId,
+              folderPath: currentPath,
+              totalFiles: total,
+              startedAt,
+            };
+            this.hub.broadcast("cards:scan_started", payload, {
+              id: `${scanRevision}:scan_started`,
+            });
+          },
+          onProgress: (processed, total) => {
+            processedFiles = processed;
+            totalFiles = total;
+            const payload: CardsScanProgressPayload = {
+              revision: scanRevision,
+              origin: currentOrigin,
+              libraryId: currentLibraryId,
+              folderPath: currentPath,
+              processedFiles: processed,
+              totalFiles: total,
+              updatedAt: Date.now(),
+            };
+            this.hub.broadcast("cards:scan_progress", payload, {
+              id: `${scanRevision}:scan_progress:${processed}`,
+            });
+          },
+        });
+
+        // If folder had no PNG files, onStart might never fire (edge cases). Ensure we emit started at least once.
+        if (!startedSent) {
+          totalFiles = scanResult.totalFiles;
+          const payload: CardsScanStartedPayload = {
+            revision: scanRevision,
+            origin: currentOrigin,
+            libraryId: currentLibraryId,
+            folderPath: currentPath,
+            totalFiles,
+            startedAt,
+          };
+          this.hub.broadcast("cards:scan_started", payload, {
+            id: `${scanRevision}:scan_started`,
+          });
+        }
 
         const afterRow = dbService.queryOne<{ count: number }>(
-          "SELECT COUNT(*) as count FROM cards"
+          "SELECT COUNT(*) as count FROM cards WHERE library_id = ?",
+          [currentLibraryId]
         );
         const after = afterRow?.count ?? 0;
 
         const addedCards = Math.max(0, after - before);
         const removedCards = Math.max(0, before - after);
         const finishedAt = Date.now();
+
+        // scan finished event (includes total/progress)
+        {
+          const payload: CardsScanFinishedPayload = {
+            revision: scanRevision,
+            origin: currentOrigin,
+            libraryId: currentLibraryId,
+            folderPath: currentPath,
+            processedFiles: scanResult.processedFiles ?? processedFiles,
+            totalFiles: scanResult.totalFiles ?? totalFiles,
+            startedAt,
+            finishedAt,
+            durationMs: finishedAt - startedAt,
+          };
+          this.hub.broadcast("cards:scan_finished", payload, {
+            id: `${scanRevision}:scan_finished`,
+          });
+        }
+
         logger.info(
           `scan:done origin=${currentOrigin} at=${new Date(
             finishedAt
@@ -86,10 +193,12 @@ export class CardsSyncOrchestrator {
           } path="${currentPath}"`
         );
 
-        this.revision += 1;
+        this.revision = scanRevision;
         const payload: CardsResyncedPayload = {
-          revision: this.revision,
+          revision: scanRevision,
           origin: currentOrigin,
+          libraryId: currentLibraryId,
+          folderPath: currentPath,
           addedCards,
           removedCards,
           startedAt,

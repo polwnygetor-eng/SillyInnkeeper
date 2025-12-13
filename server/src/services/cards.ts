@@ -24,6 +24,7 @@ export type CardsSort =
   | "name_desc";
 
 export interface SearchCardsParams {
+  library_id?: string;
   sort?: CardsSort;
   name?: string;
   creators?: string[];
@@ -66,6 +67,11 @@ export class CardsService {
     const sqlParams: unknown[] = [];
 
     const sort = params.sort ?? "created_at_desc";
+
+    if (params.library_id && params.library_id.trim().length > 0) {
+      where.push(`c.library_id = ?`);
+      sqlParams.push(params.library_id.trim());
+    }
 
     if (params.name && params.name.trim().length > 0) {
       where.push(`c.name LIKE ? COLLATE NOCASE`);
@@ -249,7 +255,9 @@ export class CardsService {
         file_path: row.file_path,
         spec_version: row.spec_version,
         created_at: row.created_at,
-        alternate_greetings_count: Number.isFinite(row.alternate_greetings_count)
+        alternate_greetings_count: Number.isFinite(
+          row.alternate_greetings_count
+        )
           ? row.alternate_greetings_count
           : 0,
         has_character_book: row.has_character_book === 1,

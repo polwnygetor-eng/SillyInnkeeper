@@ -1,4 +1,9 @@
-import type { CardsResyncedEvent } from "@/shared/types/events";
+import type {
+  CardsResyncedEvent,
+  CardsScanFinishedEvent,
+  CardsScanProgressEvent,
+  CardsScanStartedEvent,
+} from "@/shared/types/events";
 
 export type EventsClient = {
   close: () => void;
@@ -6,6 +11,9 @@ export type EventsClient = {
 
 export function createEventsClient(handlers: {
   onResynced: (evt: CardsResyncedEvent) => void;
+  onScanStarted?: (evt: CardsScanStartedEvent) => void;
+  onScanProgress?: (evt: CardsScanProgressEvent) => void;
+  onScanFinished?: (evt: CardsScanFinishedEvent) => void;
   onHello?: (data: unknown) => void;
   onError?: (error: unknown) => void;
 }): EventsClient {
@@ -29,8 +37,38 @@ export function createEventsClient(handlers: {
     }
   };
 
+  const onScanStarted = (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(String(e.data)) as CardsScanStartedEvent;
+      handlers.onScanStarted?.(data);
+    } catch (err) {
+      handlers.onError?.(err);
+    }
+  };
+
+  const onScanProgress = (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(String(e.data)) as CardsScanProgressEvent;
+      handlers.onScanProgress?.(data);
+    } catch (err) {
+      handlers.onError?.(err);
+    }
+  };
+
+  const onScanFinished = (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(String(e.data)) as CardsScanFinishedEvent;
+      handlers.onScanFinished?.(data);
+    } catch (err) {
+      handlers.onError?.(err);
+    }
+  };
+
   es.addEventListener("hello", onHello as any);
   es.addEventListener("cards:resynced", onResynced as any);
+  es.addEventListener("cards:scan_started", onScanStarted as any);
+  es.addEventListener("cards:scan_progress", onScanProgress as any);
+  es.addEventListener("cards:scan_finished", onScanFinished as any);
 
   es.onerror = (err) => {
     handlers.onError?.(err);
@@ -41,6 +79,9 @@ export function createEventsClient(handlers: {
       try {
         es.removeEventListener("hello", onHello as any);
         es.removeEventListener("cards:resynced", onResynced as any);
+        es.removeEventListener("cards:scan_started", onScanStarted as any);
+        es.removeEventListener("cards:scan_progress", onScanProgress as any);
+        es.removeEventListener("cards:scan_finished", onScanFinished as any);
         es.close();
       } catch {
         // ignore
@@ -48,5 +89,3 @@ export function createEventsClient(handlers: {
     },
   };
 }
-
-

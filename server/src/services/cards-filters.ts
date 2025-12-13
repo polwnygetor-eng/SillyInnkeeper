@@ -15,54 +15,55 @@ export interface CardsFiltersResponse {
 export class CardsFiltersService {
   constructor(private dbService: DatabaseService) {}
 
-  getCreators(): FilterOption[] {
+  getCreators(libraryId: string): FilterOption[] {
     const sql = `
       SELECT 
         c.creator as value,
         COUNT(*) as count
       FROM cards c
-      WHERE c.creator IS NOT NULL AND TRIM(c.creator) != ''
+      WHERE c.library_id = ? AND c.creator IS NOT NULL AND TRIM(c.creator) != ''
       GROUP BY c.creator
       ORDER BY count DESC, value COLLATE NOCASE ASC
     `;
 
-    return this.dbService.query<FilterOption>(sql);
+    return this.dbService.query<FilterOption>(sql, [libraryId]);
   }
 
-  getSpecVersions(): FilterOption[] {
+  getSpecVersions(libraryId: string): FilterOption[] {
     const sql = `
       SELECT 
         c.spec_version as value,
         COUNT(*) as count
       FROM cards c
-      WHERE c.spec_version IS NOT NULL AND TRIM(c.spec_version) != ''
+      WHERE c.library_id = ? AND c.spec_version IS NOT NULL AND TRIM(c.spec_version) != ''
       GROUP BY c.spec_version
       ORDER BY count DESC, value COLLATE NOCASE ASC
     `;
 
-    return this.dbService.query<FilterOption>(sql);
+    return this.dbService.query<FilterOption>(sql, [libraryId]);
   }
 
-  getTags(): FilterOption[] {
-    // Возвращаем t.name как value: клиент нормализует trim().toLowerCase() -> rawName
+  getTags(libraryId: string): FilterOption[] {
     const sql = `
       SELECT 
         t.name as value,
-        COUNT(ct.card_id) as count
+        COUNT(DISTINCT ct.card_id) as count
       FROM tags t
-      LEFT JOIN card_tags ct ON ct.tag_rawName = t.rawName
+      JOIN card_tags ct ON ct.tag_rawName = t.rawName
+      JOIN cards c ON c.id = ct.card_id
+      WHERE c.library_id = ?
       GROUP BY t.rawName, t.name
       ORDER BY count DESC, value COLLATE NOCASE ASC
     `;
 
-    return this.dbService.query<FilterOption>(sql);
+    return this.dbService.query<FilterOption>(sql, [libraryId]);
   }
 
-  getFilters(): CardsFiltersResponse {
+  getFilters(libraryId: string): CardsFiltersResponse {
     return {
-      creators: this.getCreators(),
-      spec_versions: this.getSpecVersions(),
-      tags: this.getTags(),
+      creators: this.getCreators(libraryId),
+      spec_versions: this.getSpecVersions(libraryId),
+      tags: this.getTags(libraryId),
     };
   }
 }
