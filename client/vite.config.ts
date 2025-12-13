@@ -1,24 +1,74 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true
-      }
-    }
-  }
-})
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
+  },
+  // В dev: ускоряем первый запуск за счёт prebundle зависимостей
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "@mantine/core",
+      "@mantine/hooks",
+      "@mantine/notifications",
+      "effector",
+      "effector-react",
+    ],
+  },
+  // В prod: делаем предсказуемые чанки, чтобы первый экран не тянул "всё сразу"
+  build: {
+    sourcemap: false,
+    chunkSizeWarningLimit: 750,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const p = id.replace(/\\/g, "/");
+
+          if (p.includes("node_modules")) {
+            if (p.includes("@mantine/")) return "mantine";
+            if (p.includes("effector")) return "effector";
+            if (p.includes("/react-dom/") || p.includes("/react/"))
+              return "react";
+            return "vendor";
+          }
+
+          // Разбиваем по верхнему уровню features/pages для удобного lazy-loading
+          const featuresPrefix = "/src/features/";
+          const pagesPrefix = "/src/pages/";
+
+          if (p.includes(featuresPrefix)) {
+            const rest = p.split(featuresPrefix)[1];
+            const feature = rest?.split("/")?.[0];
+            if (feature) return `feature-${feature}`;
+          }
+
+          if (p.includes(pagesPrefix)) {
+            const rest = p.split(pagesPrefix)[1];
+            const page = rest?.split("/")?.[0];
+            if (page) return `page-${page}`;
+          }
+
+          return undefined;
+        },
+      },
+    },
+  },
+});

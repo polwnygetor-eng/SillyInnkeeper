@@ -8,7 +8,7 @@ import {
   Alert,
 } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { useUnit } from "effector-react";
 import { theme } from "@/theme";
 import {
@@ -17,9 +17,21 @@ import {
   $error,
   loadSettingsFx,
 } from "@/entities/settings";
-import { SettingsForm } from "@/features/settings-form";
-import { HomePage } from "@/pages/home";
-import { startLiveSync, stopLiveSync } from "@/features/cards-live-sync";
+
+const SettingsForm = lazy(() =>
+  import("@/features/settings-form").then((m) => ({ default: m.SettingsForm }))
+);
+const HomePage = lazy(() =>
+  import("@/pages/home").then((m) => ({ default: m.HomePage }))
+);
+
+function ChunkFallback() {
+  return (
+    <Center h="100vh">
+      <Loader size="lg" />
+    </Center>
+  );
+}
 
 export default function App() {
   const [settings, isLoading, error] = useUnit([$settings, $isLoading, $error]);
@@ -29,8 +41,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (settings?.cardsFolderPath) startLiveSync();
-    return () => stopLiveSync();
+    if (!settings?.cardsFolderPath) return;
+
+    let stop: (() => void) | undefined;
+    void import("@/features/cards-live-sync").then((m) => {
+      m.startLiveSync();
+      stop = () => m.stopLiveSync();
+    });
+
+    return () => stop?.();
   }, [settings?.cardsFolderPath]);
 
   // Показываем прелоадер при первой загрузке
@@ -64,9 +83,11 @@ export default function App() {
     return (
       <MantineProvider theme={theme}>
         <Notifications position="top-right" />
-        <Center h="100vh">
-          <SettingsForm />
-        </Center>
+        <Suspense fallback={<ChunkFallback />}>
+          <Center h="100vh">
+            <SettingsForm />
+          </Center>
+        </Suspense>
       </MantineProvider>
     );
   }
@@ -75,7 +96,9 @@ export default function App() {
   return (
     <MantineProvider theme={theme}>
       <Notifications position="top-right" />
-      <HomePage />
+      <Suspense fallback={<ChunkFallback />}>
+        <HomePage />
+      </Suspense>
     </MantineProvider>
   );
 }
