@@ -1,5 +1,6 @@
 import { readFile, writeFile, ensureDir } from "fs-extra";
 import { join } from "node:path";
+import { AppError } from "../errors/app-error";
 
 export type ColumnsCount = 3 | 5 | 7;
 
@@ -79,9 +80,10 @@ export async function updateViewSettings(
     !isValidColumnsCount(newSettings.columnsCount) ||
     typeof newSettings.isCensored !== "boolean"
   ) {
-    throw new Error(
-      "Неверный формат данных. columnsCount должен быть 3, 5 или 7, isCensored должен быть boolean"
-    );
+    throw new AppError({
+      status: 400,
+      code: "api.viewSettings.invalid_format",
+    });
   }
 
   // Убеждаемся, что папка data существует

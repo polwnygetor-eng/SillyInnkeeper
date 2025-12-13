@@ -3,6 +3,8 @@ import Database from "better-sqlite3";
 import { existsSync } from "node:fs";
 import { createDatabaseService } from "../../services/database";
 import { logger } from "../../utils/logger";
+import { AppError } from "../../errors/app-error";
+import { sendError } from "../../errors/http";
 
 const router = Router();
 
@@ -26,24 +28,22 @@ router.get("/image/:id", async (req: Request, res: Response) => {
     );
 
     if (!fileRow || !fileRow.file_path) {
-      res.status(404).json({ error: "Изображение не найдено" });
-      return;
+      throw new AppError({ status: 404, code: "api.image.not_found" });
     }
 
     const filePath = fileRow.file_path;
 
     // Проверяем существование файла
     if (!existsSync(filePath)) {
-      res.status(404).json({ error: "Файл изображения не найден" });
-      return;
+      throw new AppError({ status: 404, code: "api.image.file_not_found" });
     }
 
     // Отправляем файл с правильным Content-Type
     res.setHeader("Content-Type", "image/png");
     res.sendFile(filePath);
   } catch (error) {
-    logger.error(error, "Ошибка при получении изображения");
-    res.status(500).json({ error: "Не удалось получить изображение" });
+    logger.errorKey(error, "api.image.get_failed");
+    return sendError(res, error, { status: 500, code: "api.image.get_failed" });
   }
 });
 

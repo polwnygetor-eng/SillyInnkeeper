@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { join } from "node:path";
 import { ensureDir } from "fs-extra";
+import { logger } from "../utils/logger";
 
 const THUMBNAILS_DIR = join(process.cwd(), "data", "cache", "thumbnails");
 
@@ -30,10 +31,7 @@ export async function generateThumbnail(
     // Возвращаем относительный путь от папки data
     return `cache/thumbnails/${uuid}.webp`;
   } catch (error) {
-    console.error(
-      `Ошибка при генерации миниатюры для ${sourcePath}:`,
-      error
-    );
+    logger.errorKey(error, "error.thumbnail.generateFailed", { sourcePath });
     return null;
   }
 }
@@ -51,7 +49,6 @@ export async function deleteThumbnail(uuid: string): Promise<void> {
     });
   } catch (error) {
     // Игнорируем ошибки удаления
-    console.error(`Ошибка при удалении миниатюры ${uuid}:`, error);
+    logger.errorKey(error, "error.thumbnail.deleteFailed", { uuid });
   }
 }
-

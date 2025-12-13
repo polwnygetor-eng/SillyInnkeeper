@@ -10,6 +10,9 @@ import { getOrCreateLibraryId } from "../../services/libraries";
 import { logger } from "../../utils/logger";
 import type { CardsSyncOrchestrator } from "../../services/cards-sync-orchestrator";
 import type { FsWatcherService } from "../../services/fs-watcher";
+import { setCurrentLanguage } from "../../i18n/language";
+import { AppError } from "../../errors/app-error";
+import { sendError } from "../../errors/http";
 
 const router = Router();
 
@@ -38,8 +41,11 @@ router.get("/settings", async (req: Request, res: Response) => {
     const settings = await getSettings();
     res.json(settings);
   } catch (error) {
-    logger.error(error, "Ошибка при получении настроек");
-    res.status(500).json({ error: "Не удалось получить настройки" });
+    logger.errorKey(error, "api.settings.get_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.settings.get_failed",
+    });
   }
 });
 
@@ -55,32 +61,23 @@ router.put("/settings", async (req: Request, res: Response) => {
       !("cardsFolderPath" in newSettings) ||
       !("sillytavenrPath" in newSettings)
     ) {
-      res.status(400).json({
-        error:
-          "Неверный формат данных. Ожидается объект с полями cardsFolderPath, sillytavenrPath и (опционально) language",
+      throw new AppError({
+        status: 400,
+        code: "api.settings.invalid_format",
       });
-      return;
     }
 
     // language — опционально для обратной совместимости
     if ("language" in newSettings && (newSettings as any).language != null) {
-      try {
-        validateLanguage((newSettings as any).language);
-      } catch (error) {
-        res.status(400).json({
-          error:
-            error instanceof Error
-              ? error.message
-              : "Неверное значение language",
-        });
-        return;
-      }
+      validateLanguage((newSettings as any).language);
     }
 
     const prevSettings = await getSettings();
 
     // Полное обновление настроек (валидация путей происходит внутри updateSettings)
     const savedSettings = await updateSettings(newSettings as Settings);
+    // Обновляем язык в рантайме, чтобы логи/ошибки переключались сразу
+    setCurrentLanguage(savedSettings.language);
 
     const prevPath = prevSettings.cardsFolderPath;
     const nextPath = savedSettings.cardsFolderPath;
@@ -96,7 +93,7 @@ router.put("/settings", async (req: Request, res: Response) => {
           getFsWatcher(req).restart(null);
         }
       } catch (error) {
-        logger.error(error, "Ошибка при перезапуске FS watcher");
+        logger.errorKey(error, "error.settings.restartFsWatcherFailed");
       }
     }
 
@@ -106,24 +103,17 @@ router.put("/settings", async (req: Request, res: Response) => {
         const libraryId = getOrCreateLibraryId(db, nextPath);
         getOrchestrator(req).requestScan("app", nextPath, libraryId);
       } catch (error) {
-        logger.error(error, "Ошибка при запуске синхронизации после settings");
+        logger.errorKey(error, "error.settings.postSettingsSyncFailed");
       }
     }
 
     res.json(savedSettings);
   } catch (error) {
-    logger.error(error, "Ошибка при обновлении настроек");
-
-    // Если ошибка валидации пути, возвращаем подробную ошибку
-    if (
-      error instanceof Error &&
-      error.message.includes("Путь не существует")
-    ) {
-      res.status(400).json({ error: error.message });
-      return;
-    }
-
-    res.status(500).json({ error: "Не удалось обновить настройки" });
+    logger.errorKey(error, "api.settings.update_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.settings.update_failed",
+    });
   }
 });
 

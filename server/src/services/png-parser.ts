@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { ParsedCardData } from "./types";
+import { logger } from "../utils/logger";
 
 /**
  * Парсит метаданные карточки из PNG файла
@@ -18,7 +19,7 @@ export function parsePngMetadata(filePath: string): ParsedCardData | null {
       buffer.length < 8 ||
       buffer.toString("hex", 0, 8) !== "89504e470d0a1a0a"
     ) {
-      console.error(`Файл ${filePath} не является валидным PNG`);
+      logger.errorMessageKey("error.png.invalidPng", { filePath });
       return null;
     }
 
@@ -39,9 +40,9 @@ export function parsePngMetadata(filePath: string): ParsedCardData | null {
       if (chunkType === "tEXt") {
         // Проверяем, что у нас достаточно данных для чтения чанка
         if (buffer.length < position + chunkLength + 4) {
-          console.error(
-            `Недостаточно данных для чтения чанка tEXt в файле ${filePath}`
-          );
+          logger.errorMessageKey("error.png.textChunkInsufficientData", {
+            filePath,
+          });
           return null;
         }
 
@@ -119,10 +120,7 @@ export function parsePngMetadata(filePath: string): ParsedCardData | null {
           chunk_type: "ccv3",
         };
       } catch (error) {
-        console.error(
-          `Ошибка при декодировании данных карточки ccv3 из ${filePath}:`,
-          error
-        );
+        logger.errorKey(error, "error.png.decodeCcv3Failed", { filePath });
         // Продолжаем поиск chara чанка
       }
     }
@@ -166,10 +164,7 @@ export function parsePngMetadata(filePath: string): ParsedCardData | null {
           chunk_type: "chara",
         };
       } catch (error) {
-        console.error(
-          `Ошибка при декодировании данных карточки chara из ${filePath}:`,
-          error
-        );
+        logger.errorKey(error, "error.png.decodeCharaFailed", { filePath });
         return null;
       }
     }
@@ -177,7 +172,7 @@ export function parsePngMetadata(filePath: string): ParsedCardData | null {
     // Чанки ccv3 и chara не найдены
     return null;
   } catch (error) {
-    console.error(`Ошибка при парсинге PNG файла ${filePath}:`, error);
+    logger.errorKey(error, "error.png.parseFailed", { filePath });
     return null;
   }
 }

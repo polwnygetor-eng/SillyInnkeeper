@@ -1,6 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import { readFile, writeFile, ensureDir } from "fs-extra";
 import { join } from "node:path";
+import { AppError } from "../errors/app-error";
 
 export type Language = "ru" | "en";
 
@@ -15,7 +16,7 @@ const SETTINGS_FILE_PATH = join(process.cwd(), "data", "settings.json");
 const DEFAULT_SETTINGS: Settings = {
   cardsFolderPath: null,
   sillytavenrPath: null,
-  language: "ru",
+  language: "en",
 };
 
 /**
@@ -27,7 +28,12 @@ export function validatePath(path: string): void {
   try {
     accessSync(path, constants.F_OK);
   } catch (error) {
-    throw new Error(`Путь не существует: ${path}`);
+    throw new AppError({
+      status: 400,
+      code: "api.settings.path_not_exists",
+      params: { path },
+      cause: error,
+    });
   }
 }
 
@@ -35,7 +41,11 @@ export function validateLanguage(
   language: unknown
 ): asserts language is Language {
   if (language !== "ru" && language !== "en") {
-    throw new Error(`Неверный язык: ${String(language)}`);
+    throw new AppError({
+      status: 400,
+      code: "api.settings.invalid_language",
+      params: { language: String(language) },
+    });
   }
 }
 

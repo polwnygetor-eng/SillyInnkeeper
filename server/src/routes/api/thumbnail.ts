@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { logger } from "../../utils/logger";
+import { AppError } from "../../errors/app-error";
+import { sendError } from "../../errors/http";
 
 const router = Router();
 
@@ -21,16 +23,18 @@ router.get("/thumbnail/:id", async (req: Request, res: Response) => {
 
     // Проверяем существование файла
     if (!existsSync(thumbnailPath)) {
-      res.status(404).json({ error: "Миниатюра не найдена" });
-      return;
+      throw new AppError({ status: 404, code: "api.thumbnail.not_found" });
     }
 
     // Отправляем файл с правильным Content-Type
     res.setHeader("Content-Type", "image/webp");
     res.sendFile(thumbnailPath);
   } catch (error) {
-    logger.error(error, "Ошибка при получении миниатюры");
-    res.status(500).json({ error: "Не удалось получить миниатюру" });
+    logger.errorKey(error, "api.thumbnail.get_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.thumbnail.get_failed",
+    });
   }
 });
 

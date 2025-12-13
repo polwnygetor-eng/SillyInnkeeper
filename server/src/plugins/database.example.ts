@@ -8,6 +8,7 @@
 import { Request, Response } from "express";
 import Database from "better-sqlite3";
 import { createDatabaseService } from "../services/database";
+import { logger } from "../utils/logger";
 
 // Пример использования в роуте или сервисе
 export function exampleUsage(req: Request, res: Response) {
@@ -36,9 +37,10 @@ export function exampleUsage(req: Request, res: Response) {
     "INSERT INTO settings (key, value) VALUES (?, ?)",
     ["newKey", "newValue"]
   );
-  console.log(
-    `Вставлено строк: ${result.changes}, последний ID: ${result.lastInsertRowid}`
-  );
+  logger.infoKey("log.databaseExample.inserted", {
+    changes: result.changes,
+    lastId: result.lastInsertRowid,
+  });
 
   // Использование транзакций
   dbService.transaction((db) => {

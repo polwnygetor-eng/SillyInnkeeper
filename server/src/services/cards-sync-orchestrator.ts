@@ -89,11 +89,11 @@ export class CardsSyncOrchestrator {
         this.requestedAgain = false;
         const startedAt = Date.now();
         const scanRevision = this.revision + 1;
-        logger.info(
-          `scan:start origin=${currentOrigin} at=${new Date(
-            startedAt
-          ).toISOString()} path="${currentPath}"`
-        );
+        logger.infoKey("log.cardsSync.scanStart", {
+          origin: currentOrigin,
+          at: new Date(startedAt).toISOString(),
+          path: currentPath,
+        });
 
         const dbService = createDatabaseService(this.db);
         const beforeRow = dbService.queryOne<{ count: number }>(
@@ -185,13 +185,12 @@ export class CardsSyncOrchestrator {
           });
         }
 
-        logger.info(
-          `scan:done origin=${currentOrigin} at=${new Date(
-            finishedAt
-          ).toISOString()} durationMs=${
-            finishedAt - startedAt
-          } path="${currentPath}"`
-        );
+        logger.infoKey("log.cardsSync.scanDone", {
+          origin: currentOrigin,
+          at: new Date(finishedAt).toISOString(),
+          durationMs: finishedAt - startedAt,
+          path: currentPath,
+        });
 
         this.revision = scanRevision;
         const payload: CardsResyncedPayload = {
@@ -208,9 +207,13 @@ export class CardsSyncOrchestrator {
 
         this.hub.broadcast("cards:resynced", payload, { id: payload.revision });
 
-        logger.info(
-          `cards:resynced rev=${payload.revision} origin=${payload.origin} +${payload.addedCards} -${payload.removedCards} (${payload.durationMs}ms)`
-        );
+        logger.infoKey("log.cardsSync.resynced", {
+          revision: payload.revision,
+          origin: payload.origin,
+          added: payload.addedCards,
+          removed: payload.removedCards,
+          durationMs: payload.durationMs,
+        });
 
         if (!this.requestedAgain) break;
 
@@ -220,7 +223,7 @@ export class CardsSyncOrchestrator {
         currentLibraryId = this.lastLibraryId ?? currentLibraryId;
       }
     } catch (error) {
-      logger.error(error, "Ошибка в CardsSyncOrchestrator");
+      logger.errorKey(error, "error.cardsSync.failed");
     } finally {
       this.running = false;
       this.requestedAgain = false;

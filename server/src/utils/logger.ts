@@ -1,29 +1,54 @@
+import { consola } from "consola";
+import { t, type I18nParams } from "../i18n/i18n";
+
+const level = process.env.NODE_ENV === "development" ? 7 : 5; // debug : info
+const base = consola.create({ level }).withTag("server");
+
 /**
- * Простой logger для замены fastify.log
+ * Единый logger (красивый вывод через consola).
+ * Поддерживает как «готовые строки», так и ключи i18n.
  */
 export const logger = {
   info: (message: string, ...args: any[]): void => {
-    console.log(`[INFO] ${message}`, ...args);
+    base.info(message, ...args);
   },
-  error: (
-    error: Error | string | unknown,
-    message?: string,
+  infoKey: (key: string, params?: I18nParams, ...args: any[]): void => {
+    base.info(t(key, params), ...args);
+  },
+
+  warn: (message: string, ...args: any[]): void => {
+    base.warn(message, ...args);
+  },
+  warnKey: (key: string, params?: I18nParams, ...args: any[]): void => {
+    base.warn(t(key, params), ...args);
+  },
+
+  debug: (message: string, ...args: any[]): void => {
+    base.debug(message, ...args);
+  },
+  debugKey: (key: string, params?: I18nParams, ...args: any[]): void => {
+    base.debug(t(key, params), ...args);
+  },
+
+  error: (error: unknown, message?: string, ...args: any[]): void => {
+    if (message) {
+      base.error(message, error, ...args);
+      return;
+    }
+    base.error(error, ...args);
+  },
+  errorMessage: (message: string, ...args: any[]): void => {
+    base.error(message, ...args);
+  },
+  errorKey: (
+    error: unknown,
+    key: string,
+    params?: I18nParams,
     ...args: any[]
   ): void => {
-    if (error instanceof Error) {
-      console.error(`[ERROR] ${message || error.message}`, error, ...args);
-    } else if (typeof error === "string") {
-      console.error(`[ERROR] ${error}`, ...args);
-    } else {
-      console.error(`[ERROR] ${message || String(error)}`, error, ...args);
-    }
+    base.error(t(key, params), error, ...args);
   },
-  warn: (message: string, ...args: any[]): void => {
-    console.warn(`[WARN] ${message}`, ...args);
-  },
-  debug: (message: string, ...args: any[]): void => {
-    if (process.env.NODE_ENV === "development") {
-      console.debug(`[DEBUG] ${message}`, ...args);
-    }
+  errorMessageKey: (key: string, params?: I18nParams, ...args: any[]): void => {
+    base.error(t(key, params), ...args);
   },
 };

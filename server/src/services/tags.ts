@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { createDatabaseService, DatabaseService } from "./database";
+import { AppError } from "../errors/app-error";
 
 /**
  * Интерфейс тега
@@ -33,13 +34,13 @@ export class TagService {
    */
   private validateTagName(name: string): void {
     if (typeof name !== "string") {
-      throw new Error("Поле name должно быть строкой");
+      throw new AppError({ status: 400, code: "api.tags.name_invalid" });
     }
     if (!name.trim()) {
-      throw new Error("Поле name обязательно");
+      throw new AppError({ status: 400, code: "api.tags.name_invalid" });
     }
     if (name.length > 255) {
-      throw new Error("Поле name должно быть не более 255 символов");
+      throw new AppError({ status: 400, code: "api.tags.name_invalid" });
     }
   }
 
@@ -86,10 +87,11 @@ export class TagService {
     // Проверяем существование тега с таким rawName
     const existingTag = this.getTagByRawName(rawName);
     if (existingTag) {
-      const error: any = new Error("Тег с таким именем уже существует");
-      error.statusCode = 409;
-      error.existingTag = existingTag;
-      throw error;
+      throw new AppError({
+        status: 409,
+        code: "api.tags.already_exists",
+        extra: { existingTag },
+      });
     }
 
     const id = randomUUID();
@@ -116,9 +118,7 @@ export class TagService {
     // Проверяем существование тега
     const existingTag = this.getTagById(id);
     if (!existingTag) {
-      const error: any = new Error("Тег с указанным ID не найден");
-      error.statusCode = 404;
-      throw error;
+      throw new AppError({ status: 404, code: "api.tags.not_found" });
     }
 
     const rawName = this.normalizeTagName(name);
@@ -126,10 +126,11 @@ export class TagService {
     // Проверяем, не существует ли другой тег с таким rawName
     const tagWithSameRawName = this.getTagByRawName(rawName);
     if (tagWithSameRawName && tagWithSameRawName.id !== id) {
-      const error: any = new Error("Тег с таким именем уже существует");
-      error.statusCode = 409;
-      error.existingTag = tagWithSameRawName;
-      throw error;
+      throw new AppError({
+        status: 409,
+        code: "api.tags.already_exists",
+        extra: { existingTag: tagWithSameRawName },
+      });
     }
 
     const sql = `UPDATE tags SET name = ?, rawName = ? WHERE id = ?`;
@@ -162,9 +163,7 @@ export class TagService {
   deleteTag(id: string): void {
     const existingTag = this.getTagById(id);
     if (!existingTag) {
-      const error: any = new Error("Тег с указанным ID не найден");
-      error.statusCode = 404;
-      throw error;
+      throw new AppError({ status: 404, code: "api.tags.not_found" });
     }
 
     const sql = `DELETE FROM tags WHERE id = ?`;

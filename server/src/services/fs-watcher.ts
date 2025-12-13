@@ -43,7 +43,7 @@ export class FsWatcherService {
       this.debounceTimer = setTimeout(() => {
         this.debounceTimer = null;
         if (!this.currentPath || !this.currentLibraryId) return;
-        logger.info(`FS watcher trigger scan (${reason})`);
+        logger.infoKey("log.fsWatcher.triggerScan", { reason });
         this.orchestrator.requestScan(
           "fs",
           this.currentPath,
@@ -65,9 +65,9 @@ export class FsWatcherService {
       })
       .on("addDir", () => schedule("addDir"))
       .on("unlinkDir", () => schedule("unlinkDir"))
-      .on("error", (err) => logger.error(err, "FS watcher error"));
+      .on("error", (err) => logger.errorKey(err, "error.fsWatcher.error"));
 
-    logger.info(`FS watcher started: ${folderPath}`);
+    logger.infoKey("log.fsWatcher.started", { folderPath });
   }
 
   stop(): void {

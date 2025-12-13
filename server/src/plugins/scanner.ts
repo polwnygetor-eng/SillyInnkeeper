@@ -19,24 +19,19 @@ export async function initializeScanner(db: Database.Database): Promise<void> {
       settings.cardsFolderPath !== null &&
       existsSync(settings.cardsFolderPath)
     ) {
-      logger.info(`Автозапуск сканирования папки: ${settings.cardsFolderPath}`);
+      logger.infoKey("log.scanner.autoStart", {
+        folderPath: settings.cardsFolderPath,
+      });
 
       // db параметр оставлен для обратной совместимости сигнатуры старого вызова,
       // но фактический запуск идёт через orchestrator.
       void db;
-      logger.warn(
-        "initializeScanner(db) устарел: используйте initializeScannerWithOrchestrator(orchestrator)"
-      );
+      logger.warnKey("warn.scanner.deprecatedInitializeScanner");
     } else {
-      logger.info(
-        "cardsFolderPath не указан или папка не существует, сканирование не запущено"
-      );
+      logger.infoKey("log.scanner.skipNoPath");
     }
   } catch (error) {
-    logger.error(
-      error,
-      "Ошибка при чтении настроек для автозапуска сканирования"
-    );
+    logger.errorKey(error, "error.scanner.readSettingsFailed");
   }
 }
 
@@ -50,14 +45,13 @@ export async function initializeScannerWithOrchestrator(
       settings.cardsFolderPath !== null &&
       existsSync(settings.cardsFolderPath)
     ) {
-      logger.info(`Автозапуск сканирования папки: ${settings.cardsFolderPath}`);
+      logger.infoKey("log.scanner.autoStart", {
+        folderPath: settings.cardsFolderPath,
+      });
       const libraryId = getOrCreateLibraryId(db, settings.cardsFolderPath);
       orchestrator.requestScan("app", settings.cardsFolderPath, libraryId);
     }
   } catch (error) {
-    logger.error(
-      error,
-      "Ошибка при чтении настроек для автозапуска сканирования"
-    );
+    logger.errorKey(error, "error.scanner.readSettingsFailed");
   }
 }

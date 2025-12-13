@@ -8,6 +8,7 @@ import { createDatabaseService, DatabaseService } from "./database";
 import { CardParser } from "./card-parser";
 import { generateThumbnail, deleteThumbnail } from "./thumbnail";
 import { createTagService } from "./tags";
+import { logger } from "../utils/logger";
 
 const CONCURRENT_LIMIT = 5;
 
@@ -63,17 +64,17 @@ export class ScanService {
     }
   ): Promise<{ totalFiles: number; processedFiles: number }> {
     if (!existsSync(folderPath)) {
-      console.error(`Папка не существует: ${folderPath}`);
+      logger.errorMessageKey("error.scan.folderNotExists", { folderPath });
       return { totalFiles: 0, processedFiles: 0 };
     }
 
-    console.log(`Начало сканирования папки: ${folderPath}`);
+    logger.infoKey("log.scan.start", { folderPath });
     this.scannedFiles.clear();
 
     try {
       // Рекурсивно получаем все файлы
       const files = await this.getAllPngFiles(folderPath);
-      console.log(`Найдено ${files.length} PNG файлов`);
+      logger.infoKey("log.scan.foundPngFiles", { count: files.length });
       opts?.onStart?.(files.length);
 
       const totalFiles = files.length;
@@ -105,7 +106,7 @@ export class ScanService {
       // Очищаем удаленные файлы
       await this.cleanupDeletedFiles();
 
-      console.log(`Сканирование завершено. Обработано файлов: ${files.length}`);
+      logger.infoKey("log.scan.done", { count: files.length });
       // final progress snapshot
       if (processedFiles !== totalFiles) {
         processedFiles = totalFiles;
@@ -114,7 +115,7 @@ export class ScanService {
 
       return { totalFiles, processedFiles };
     } catch (error) {
-      console.error(`Ошибка при сканировании папки ${folderPath}:`, error);
+      logger.errorKey(error, "error.scan.scanFolderFailed", { folderPath });
       throw error;
     }
   }
@@ -200,7 +201,7 @@ export class ScanService {
       // Парсим карточку через CardParser
       const extractedData = this.cardParser.parse(filePath);
       if (!extractedData) {
-        console.error(`Не удалось распарсить карточку из ${filePath}`);
+        logger.errorMessageKey("error.scan.parseCardFailed", { filePath });
         return;
       }
 
@@ -594,7 +595,7 @@ export class ScanService {
         }
       }
     } catch (error) {
-      console.error(`Ошибка при обработке файла ${filePath}:`, error);
+      logger.errorKey(error, "error.scan.processFileFailed", { filePath });
     }
   }
 
@@ -630,9 +631,9 @@ export class ScanService {
         return;
       }
 
-      console.log(
-        `Найдено ${filesToDelete.length} удаленных файлов для очистки`
-      );
+      logger.infoKey("log.scan.foundDeletedFilesToCleanup", {
+        count: filesToDelete.length,
+      });
 
       // Удаляем файлы из БД
       for (const file of filesToDelete) {
@@ -702,7 +703,7 @@ export class ScanService {
         }
       }
     } catch (error) {
-      console.error("Ошибка при очистке удаленных файлов:", error);
+      logger.errorKey(error, "error.scan.cleanupDeletedFilesFailed");
     }
   }
 }

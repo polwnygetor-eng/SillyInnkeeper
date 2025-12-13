@@ -9,6 +9,7 @@ import { getOrCreateLibraryId } from "./services/libraries";
 import type { SseHub } from "./services/sse-hub";
 import type { FsWatcherService } from "./services/fs-watcher";
 import type { CardsSyncOrchestrator } from "./services/cards-sync-orchestrator";
+import { setCurrentLanguage } from "./i18n/language";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -21,13 +22,21 @@ async function startServer(): Promise<void> {
     const orchestrator = (app.locals as any)
       .cardsSyncOrchestrator as CardsSyncOrchestrator;
 
+    // Инициализируем язык (для локализации логов/ошибок)
+    try {
+      const settings = await getSettings();
+      setCurrentLanguage(settings.language);
+    } catch (error) {
+      logger.errorKey(error, "log.server.readLanguageSettingsFailed");
+    }
+
     // Запускаем сервер
     const server = app.listen(PORT, () => {
-      logger.info(`Сервер запущен на порту ${PORT}`);
+      logger.infoKey("log.server.started", { port: PORT });
 
       // Инициализируем сканер после запуска сервера
       initializeScannerWithOrchestrator(orchestrator, db).catch((error) => {
-        logger.error(error, "Ошибка при инициализации сканера");
+        logger.errorKey(error, "log.server.initScannerFailed");
       });
 
       // Запускаем FS watcher (если cardsFolderPath указан)
@@ -40,41 +49,41 @@ async function startServer(): Promise<void> {
           }
         })
         .catch((error) => {
-          logger.error(error, "Ошибка при запуске FS watcher");
+          logger.errorKey(error, "log.server.startFsWatcherFailed");
         });
     });
 
     // Graceful shutdown
     const shutdown = async (signal: string): Promise<void> => {
-      logger.info(`Получен сигнал ${signal}, начинаем graceful shutdown...`);
+      logger.infoKey("log.server.signalReceived", { signal });
 
       server.close(() => {
-        logger.info("HTTP сервер закрыт");
+        logger.infoKey("log.server.httpClosed");
 
         // Закрываем SSE и watcher
         try {
           fsWatcher.stop();
           sseHub.closeAll();
         } catch (error) {
-          logger.error(error, "Ошибка при закрытии SSE/watcher");
+          logger.errorKey(error, "log.server.closeSseWatcherFailed");
         }
 
         // Закрываем базу данных
         try {
           db.close();
-          logger.info("База данных закрыта");
+          logger.infoKey("log.server.dbClosed");
           process.exit(0);
         } catch (error) {
-          logger.error(error, "Ошибка при закрытии базы данных");
+          logger.errorKey(error, "log.server.dbCloseFailed");
           process.exit(1);
         }
       });
 
       // Принудительное завершение через 10 секунд
       setTimeout(() => {
-        logger.error(
-          new Error("Принудительное завершение"),
-          "Graceful shutdown не завершился вовремя"
+        logger.errorKey(
+          new Error("Force shutdown"),
+          "log.server.forceShutdown"
         );
         process.exit(1);
       }, 10000);
@@ -97,7 +106,7 @@ async function startServer(): Promise<void> {
       shutdown("uncaughtException");
     });
   } catch (error) {
-    logger.error(error, "Ошибка при запуске сервера");
+    logger.errorKey(error, "log.server.startFailed");
     process.exit(1);
   }
 }

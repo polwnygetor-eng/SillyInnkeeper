@@ -5,6 +5,8 @@ import {
   ViewSettings,
 } from "../../services/view-settings";
 import { logger } from "../../utils/logger";
+import { AppError } from "../../errors/app-error";
+import { sendError } from "../../errors/http";
 
 const router = Router();
 
@@ -14,10 +16,11 @@ router.get("/view-settings", async (req: Request, res: Response) => {
     const settings = await getViewSettings();
     res.json(settings);
   } catch (error) {
-    logger.error(error, "Ошибка при получении настроек отображения");
-    res
-      .status(500)
-      .json({ error: "Не удалось получить настройки отображения" });
+    logger.errorKey(error, "api.viewSettings.get_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.viewSettings.get_failed",
+    });
   }
 });
 
@@ -33,11 +36,10 @@ router.put("/view-settings", async (req: Request, res: Response) => {
       !("columnsCount" in newSettings) ||
       !("isCensored" in newSettings)
     ) {
-      res.status(400).json({
-        error:
-          "Неверный формат данных. Ожидается объект с полями columnsCount и isCensored",
+      throw new AppError({
+        status: 400,
+        code: "api.viewSettings.invalid_format",
       });
-      return;
     }
 
     // Полное обновление настроек (валидация происходит внутри updateViewSettings)
@@ -45,20 +47,11 @@ router.put("/view-settings", async (req: Request, res: Response) => {
 
     res.json(savedSettings);
   } catch (error) {
-    logger.error(error, "Ошибка при обновлении настроек отображения");
-
-    // Если ошибка валидации, возвращаем подробную ошибку
-    if (
-      error instanceof Error &&
-      error.message.includes("Неверный формат данных")
-    ) {
-      res.status(400).json({ error: error.message });
-      return;
-    }
-
-    res
-      .status(500)
-      .json({ error: "Не удалось обновить настройки отображения" });
+    logger.errorKey(error, "api.viewSettings.update_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.viewSettings.update_failed",
+    });
   }
 });
 

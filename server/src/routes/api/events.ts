@@ -29,7 +29,10 @@ router.get("/events", (req: Request, res: Response) => {
 
     const clientId = randomUUID();
     const remove = hub.addClient(clientId, res);
-    logger.info(`SSE client connected: ${clientId} (total=${hub.getClientsCount()})`);
+    logger.infoKey("log.sse.clientConnected", {
+      clientId,
+      total: hub.getClientsCount(),
+    });
 
     req.on("close", () => {
       remove();
@@ -38,12 +41,13 @@ router.get("/events", (req: Request, res: Response) => {
       } catch {
         // ignore
       }
-      logger.info(
-        `SSE client disconnected: ${clientId} (total=${hub.getClientsCount()})`
-      );
+      logger.infoKey("log.sse.clientDisconnected", {
+        clientId,
+        total: hub.getClientsCount(),
+      });
     });
   } catch (error) {
-    logger.error(error, "Ошибка при установке SSE соединения");
+    logger.errorKey(error, "error.sse.connectionFailed");
     try {
       res.status(500).end();
     } catch {
@@ -53,5 +57,3 @@ router.get("/events", (req: Request, res: Response) => {
 });
 
 export default router;
-
-

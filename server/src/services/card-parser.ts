@@ -2,6 +2,8 @@ import { parsePngMetadata } from "./png-parser";
 import { CardValidator } from "./card-validator";
 import { CardDataExtractor } from "./card-data-extractor";
 import { ExtractedCardData } from "./types";
+import { logger } from "../utils/logger";
+import { t } from "../i18n/i18n";
 
 /**
  * Главный класс для парсинга карточек персонажей
@@ -24,16 +26,14 @@ export class CardParser {
       // Читаем метаданные из PNG
       const parsedData = parsePngMetadata(filePath);
       if (!parsedData) {
-        console.error(
-          `Не удалось найти метаданные карточки в файле: ${filePath}`
-        );
+        logger.errorMessageKey("error.cardParser.noMetadata", { filePath });
         return null;
       }
 
       // Обрабатываем JSON данные
       return this.parseJson(parsedData.data, filePath);
     } catch (error) {
-      console.error(`Ошибка при парсинге PNG файла ${filePath}:`, error);
+      logger.errorKey(error, "error.cardParser.parsePngFailed", { filePath });
       return null;
     }
   }
@@ -54,25 +54,31 @@ export class CardParser {
 
       if (!specVersion) {
         const errorMsg =
-          validator.getLastError() || "Неизвестная ошибка валидации";
-        const fileInfo = filePath ? ` (файл: ${filePath})` : "";
+          validator.getLastError() || t("error.cardParser.validationUnknown");
+        const fileInfo = filePath
+          ? t("error.cardParser.fileInfo", { filePath })
+          : "";
 
         // Предполагаем тип ошибки на основе структуры данных
-        let errorType = "Неизвестная структура данных";
+        let errorType = t("error.cardParser.errorType.unknownDataStructure");
         if (jsonData && typeof jsonData === "object") {
           const card = jsonData as Record<string, unknown>;
           if (card.spec !== undefined) {
-            errorType = `Неверная спецификация: ${card.spec}`;
+            errorType = t("error.cardParser.errorType.invalidSpec", {
+              spec: String(card.spec),
+            });
           } else if (card.name !== undefined) {
-            errorType = "Неполные данные V1 (отсутствуют обязательные поля)";
+            errorType = t("error.cardParser.errorType.incompleteV1");
           } else {
-            errorType = "Отсутствуют обязательные поля";
+            errorType = t("error.cardParser.errorType.missingRequiredFields");
           }
         }
 
-        console.error(`Ошибка при парсинге карточки${fileInfo}`);
-        console.error(`Тип ошибки: ${errorType}`);
-        console.error(`Детали: ${errorMsg}`);
+        logger.errorMessageKey("error.cardParser.parseCard", { fileInfo });
+        logger.errorMessageKey("error.cardParser.errorType", { errorType });
+        logger.errorMessageKey("error.cardParser.details", {
+          details: errorMsg,
+        });
         return null;
       }
 
@@ -81,16 +87,18 @@ export class CardParser {
 
       return extractedData;
     } catch (error) {
-      const fileInfo = filePath ? ` (файл: ${filePath})` : "";
-      console.error(`Ошибка при извлечении данных карточки${fileInfo}:`, error);
+      const fileInfo = filePath
+        ? t("error.cardParser.fileInfo", { filePath })
+        : "";
+      logger.errorKey(error, "error.cardParser.extractFailed", { fileInfo });
 
       // Предполагаем тип ошибки
-      let errorType = "Ошибка извлечения данных";
+      let errorType = t("error.cardParser.errorType.extractionError");
       if (error instanceof Error) {
         errorType = error.message;
       }
 
-      console.error(`Тип ошибки: ${errorType}`);
+      logger.errorMessageKey("error.cardParser.errorType", { errorType });
       return null;
     }
   }

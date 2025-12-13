@@ -10,6 +10,8 @@ import type {
 import { createCardsFiltersService } from "../../services/cards-filters";
 import { getSettings } from "../../services/settings";
 import { getOrCreateLibraryId } from "../../services/libraries";
+import { AppError } from "../../errors/app-error";
+import { sendError } from "../../errors/http";
 
 const router = Router();
 
@@ -118,8 +120,10 @@ router.get("/cards", async (req: Request, res: Response) => {
       if (createdFrom) {
         const ms = parseLocalDayStartMs(createdFrom);
         if (ms == null) {
-          res.status(400).json({ error: "Некорректный created_from" });
-          return;
+          throw new AppError({
+            status: 400,
+            code: "api.cards.invalid_created_from",
+          });
         }
         created_from_ms = ms;
       }
@@ -130,8 +134,10 @@ router.get("/cards", async (req: Request, res: Response) => {
       if (createdTo) {
         const ms = parseLocalDayEndMs(createdTo);
         if (ms == null) {
-          res.status(400).json({ error: "Некорректный created_to" });
-          return;
+          throw new AppError({
+            status: 400,
+            code: "api.cards.invalid_created_to",
+          });
         }
         created_to_ms = ms;
       }
@@ -182,8 +188,11 @@ router.get("/cards", async (req: Request, res: Response) => {
     const cardsList = cardsService.searchCards(params);
     res.json(cardsList);
   } catch (error) {
-    logger.error(error, "Ошибка при получении списка карточек");
-    res.status(500).json({ error: "Не удалось получить список карточек" });
+    logger.errorKey(error, "api.cards.list_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.cards.list_failed",
+    });
   }
 });
 
@@ -202,10 +211,11 @@ router.get("/cards/filters", async (req: Request, res: Response) => {
     const libraryId = getOrCreateLibraryId(db, settings.cardsFolderPath);
     res.json(filtersService.getFilters(libraryId));
   } catch (error) {
-    logger.error(error, "Ошибка при получении данных фильтров карточек");
-    res
-      .status(500)
-      .json({ error: "Не удалось получить данные фильтров карточек" });
+    logger.errorKey(error, "api.cards.filters_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.cards.filters_failed",
+    });
   }
 });
 
@@ -287,8 +297,7 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
       | undefined;
 
     if (!row) {
-      res.status(404).json({ error: "Карточка не найдена" });
-      return;
+      throw new AppError({ status: 404, code: "api.cards.not_found" });
     }
 
     const tags = row.tags ? safeJsonParse<string[]>(row.tags) : null;
@@ -360,8 +369,8 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
       data_json,
     });
   } catch (error) {
-    logger.error(error, "Ошибка при получении карточки по id");
-    res.status(500).json({ error: "Не удалось получить карточку" });
+    logger.errorKey(error, "api.cards.get_failed");
+    return sendError(res, error, { status: 500, code: "api.cards.get_failed" });
   }
 });
 

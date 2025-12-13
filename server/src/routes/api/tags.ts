@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { createTagService } from "../../services/tags";
 import { logger } from "../../utils/logger";
+import { AppError } from "../../errors/app-error";
+import { sendError } from "../../errors/http";
 
 const router = Router();
 
@@ -18,8 +20,8 @@ router.get("/tags", async (req: Request, res: Response) => {
     const tags = tagService.getAllTags();
     res.json(tags);
   } catch (error) {
-    logger.error(error, "Ошибка при получении списка тегов");
-    res.status(500).json({ error: "Не удалось получить список тегов" });
+    logger.errorKey(error, "api.tags.list_failed");
+    return sendError(res, error, { status: 500, code: "api.tags.list_failed" });
   }
 });
 
@@ -30,11 +32,7 @@ router.post("/tags", async (req: Request, res: Response) => {
 
     // Валидация входных данных
     if (typeof name !== "string") {
-      res.status(400).json({
-        error:
-          "Поле name обязательно и должно быть строкой не более 255 символов",
-      });
-      return;
+      throw new AppError({ status: 400, code: "api.tags.name_invalid" });
     }
 
     const db = getDb(req);
@@ -42,27 +40,11 @@ router.post("/tags", async (req: Request, res: Response) => {
     const tag = tagService.createTag(name);
     res.status(201).json(tag);
   } catch (error: any) {
-    logger.error(error, "Ошибка при создании тега");
-
-    // Обработка конфликта (тег уже существует)
-    if (error.statusCode === 409) {
-      res.status(409).json({
-        error: "Тег с таким именем уже существует",
-        existingTag: error.existingTag,
-      });
-      return;
-    }
-
-    // Обработка ошибок валидации
-    if (error.message && error.message.includes("обязательно")) {
-      res.status(400).json({
-        error:
-          "Поле name обязательно и должно быть строкой не более 255 символов",
-      });
-      return;
-    }
-
-    res.status(500).json({ error: "Не удалось создать тег" });
+    logger.errorKey(error, "api.tags.create_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.tags.create_failed",
+    });
   }
 });
 
@@ -75,14 +57,13 @@ router.get("/tags/:id", async (req: Request, res: Response) => {
     const tag = tagService.getTagById(id);
 
     if (!tag) {
-      res.status(404).json({ error: "Тег с указанным ID не найден" });
-      return;
+      throw new AppError({ status: 404, code: "api.tags.not_found" });
     }
 
     res.json(tag);
   } catch (error) {
-    logger.error(error, "Ошибка при получении тега");
-    res.status(500).json({ error: "Не удалось получить тег" });
+    logger.errorKey(error, "api.tags.get_failed");
+    return sendError(res, error, { status: 500, code: "api.tags.get_failed" });
   }
 });
 
@@ -94,11 +75,7 @@ router.put("/tags/:id", async (req: Request, res: Response) => {
 
     // Валидация входных данных
     if (typeof name !== "string") {
-      res.status(400).json({
-        error:
-          "Поле name обязательно и должно быть строкой не более 255 символов",
-      });
-      return;
+      throw new AppError({ status: 400, code: "api.tags.name_invalid" });
     }
 
     const db = getDb(req);
@@ -106,33 +83,11 @@ router.put("/tags/:id", async (req: Request, res: Response) => {
     const tag = tagService.updateTag(id, name);
     res.json(tag);
   } catch (error: any) {
-    logger.error(error, "Ошибка при обновлении тега");
-
-    // Обработка ошибки "не найден"
-    if (error.statusCode === 404) {
-      res.status(404).json({ error: "Тег с указанным ID не найден" });
-      return;
-    }
-
-    // Обработка конфликта (тег с таким rawName уже существует)
-    if (error.statusCode === 409) {
-      res.status(409).json({
-        error: "Тег с таким именем уже существует",
-        existingTag: error.existingTag,
-      });
-      return;
-    }
-
-    // Обработка ошибок валидации
-    if (error.message && error.message.includes("обязательно")) {
-      res.status(400).json({
-        error:
-          "Поле name обязательно и должно быть строкой не более 255 символов",
-      });
-      return;
-    }
-
-    res.status(500).json({ error: "Не удалось обновить тег" });
+    logger.errorKey(error, "api.tags.update_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.tags.update_failed",
+    });
   }
 });
 
@@ -144,11 +99,7 @@ router.patch("/tags/:id", async (req: Request, res: Response) => {
 
     // Валидация входных данных
     if (typeof name !== "string") {
-      res.status(400).json({
-        error:
-          "Поле name обязательно и должно быть строкой не более 255 символов",
-      });
-      return;
+      throw new AppError({ status: 400, code: "api.tags.name_invalid" });
     }
 
     const db = getDb(req);
@@ -156,33 +107,11 @@ router.patch("/tags/:id", async (req: Request, res: Response) => {
     const tag = tagService.patchTag(id, name);
     res.json(tag);
   } catch (error: any) {
-    logger.error(error, "Ошибка при частичном обновлении тега");
-
-    // Обработка ошибки "не найден"
-    if (error.statusCode === 404) {
-      res.status(404).json({ error: "Тег с указанным ID не найден" });
-      return;
-    }
-
-    // Обработка конфликта (тег с таким rawName уже существует)
-    if (error.statusCode === 409) {
-      res.status(409).json({
-        error: "Тег с таким именем уже существует",
-        existingTag: error.existingTag,
-      });
-      return;
-    }
-
-    // Обработка ошибок валидации
-    if (error.message && error.message.includes("обязательно")) {
-      res.status(400).json({
-        error:
-          "Поле name обязательно и должно быть строкой не более 255 символов",
-      });
-      return;
-    }
-
-    res.status(500).json({ error: "Не удалось обновить тег" });
+    logger.errorKey(error, "api.tags.update_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.tags.update_failed",
+    });
   }
 });
 
@@ -195,15 +124,11 @@ router.delete("/tags/:id", async (req: Request, res: Response) => {
     tagService.deleteTag(id);
     res.json({ message: "Тег успешно удален" });
   } catch (error: any) {
-    logger.error(error, "Ошибка при удалении тега");
-
-    // Обработка ошибки "не найден"
-    if (error.statusCode === 404) {
-      res.status(404).json({ error: "Тег с указанным ID не найден" });
-      return;
-    }
-
-    res.status(500).json({ error: "Не удалось удалить тег" });
+    logger.errorKey(error, "api.tags.delete_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.tags.delete_failed",
+    });
   }
 });
 
