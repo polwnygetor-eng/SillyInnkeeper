@@ -442,7 +442,7 @@ function ActionsPanel({
                 tooltip={details?.file_path ?? i18n.t("empty.dash")}
                 keepStart={16}
                 keepEnd={14}
-                maxWidth={220}
+                maxWidth={250}
                 onCopiedMessage={i18n.t("cardDetails.copiedPath")}
                 onCopyFailedMessage={i18n.t("cardDetails.copyFailed")}
               />
@@ -458,7 +458,7 @@ function ActionsPanel({
                 tooltip={details?.id ?? i18n.t("empty.dash")}
                 keepStart={10}
                 keepEnd={10}
-                maxWidth={220}
+                maxWidth={250}
                 onCopiedMessage={i18n.t("cardDetails.copiedId")}
                 onCopyFailedMessage={i18n.t("cardDetails.copyFailed")}
               />
