@@ -21,9 +21,23 @@ router.get("/image/:id", async (req: Request, res: Response) => {
     const db = getDb(req);
     const dbService = createDatabaseService(db);
 
-    // Получаем file_path из таблицы card_files по card_id
-    const fileRow = dbService.queryOne<{ file_path: string }>(
-      "SELECT file_path FROM card_files WHERE card_id = ? ORDER BY file_birthtime ASC, file_path ASC LIMIT 1",
+    // Получаем основной file_path: override (cards.primary_file_path) или самый старый file_birthtime
+    const fileRow = dbService.queryOne<{ file_path: string | null }>(
+      `
+      SELECT COALESCE(
+        c.primary_file_path,
+        (
+          SELECT cf.file_path
+          FROM card_files cf
+          WHERE cf.card_id = c.id
+          ORDER BY cf.file_birthtime ASC, cf.file_path ASC
+          LIMIT 1
+        )
+      ) as file_path
+      FROM cards c
+      WHERE c.id = ?
+      LIMIT 1
+    `,
       [id]
     );
 

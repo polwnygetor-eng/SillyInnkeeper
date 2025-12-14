@@ -51,6 +51,7 @@ router.post("/st/play", (req: Request, res: Response) => {
         SELECT
           c.id,
           c.name,
+          c.primary_file_path,
           (
             SELECT cf.file_path
             FROM card_files cf
@@ -67,6 +68,7 @@ router.post("/st/play", (req: Request, res: Response) => {
       | {
           id: string;
           name: string | null;
+          primary_file_path: string | null;
           file_path: string | null;
         }
       | undefined;
@@ -74,10 +76,11 @@ router.post("/st/play", (req: Request, res: Response) => {
     if (!row) {
       throw new AppError({ status: 404, code: "api.cards.not_found" });
     }
-    if (!row.file_path) {
+    const mainFilePath = row.primary_file_path ?? row.file_path;
+    if (!mainFilePath) {
       throw new AppError({ status: 404, code: "api.image.not_found" });
     }
-    if (!existsSync(row.file_path)) {
+    if (!existsSync(mainFilePath)) {
       throw new AppError({ status: 404, code: "api.image.file_not_found" });
     }
 

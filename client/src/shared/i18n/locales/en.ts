@@ -170,12 +170,18 @@ const en = {
     stImportFailMessage: "Import failed (cardId: {{cardId}})",
     duplicatesTitle: "Duplicates",
     showInExplorer: "Show in Explorer (soon)",
+    makeMainFile: "Set as main file",
     deleteDuplicate: "Delete duplicate",
     confirmDeleteDuplicateTitle: "Delete duplicate?",
     confirmDeleteDuplicateMessage:
       "The file will be deleted from disk and from the database. This action cannot be undone.",
     duplicateDeleted: "Duplicate deleted",
     duplicateDeleteFailed: "Failed to delete duplicate",
+    copiedPath: "Path copied",
+    copiedId: "ID copied",
+    copyFailed: "Failed to copy",
+    mainFileUpdated: "Main file updated",
+    mainFileUpdateFailed: "Failed to update main file",
     confirmDeleteCardTitle: "Delete card?",
     confirmDeleteCardMessage:
       "The card will be deleted completely: all files (including duplicates) will be removed from disk and from the database. This action cannot be undone.",

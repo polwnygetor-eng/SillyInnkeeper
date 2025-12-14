@@ -172,12 +172,18 @@ const ru = {
     stImportFailMessage: "Импорт не удался (cardId: {{cardId}})",
     duplicatesTitle: "Дубликаты",
     showInExplorer: "Показать в проводнике (скоро)",
+    makeMainFile: "Сделать основным файлом",
     deleteDuplicate: "Удалить дубль",
     confirmDeleteDuplicateTitle: "Удалить дубль?",
     confirmDeleteDuplicateMessage:
       "Файл будет удалён с диска и из базы данных. Это действие нельзя отменить.",
     duplicateDeleted: "Дубль удалён",
     duplicateDeleteFailed: "Не удалось удалить дубль",
+    copiedPath: "Путь скопирован",
+    copiedId: "ID скопирован",
+    copyFailed: "Не удалось скопировать",
+    mainFileUpdated: "Основной файл обновлён",
+    mainFileUpdateFailed: "Не удалось обновить основной файл",
     confirmDeleteCardTitle: "Удалить карточку?",
     confirmDeleteCardMessage:
       "Карточка будет удалена полностью: все файлы (включая дубликаты) будут удалены с диска и из базы данных. Это действие нельзя отменить.",

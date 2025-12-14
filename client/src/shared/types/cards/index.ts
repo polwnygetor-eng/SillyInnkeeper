@@ -22,6 +22,7 @@ export interface CardDetails {
   file_path: string | null;
   file_paths?: string[];
   duplicates?: string[];
+  primary_file_path?: string | null;
   avatar_url: string;
 
   description: string | null;

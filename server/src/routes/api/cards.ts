@@ -218,6 +218,7 @@ router.get("/cards/:id/export.png", async (req: Request, res: Response) => {
           c.id,
           c.name,
           c.data_json,
+          c.primary_file_path,
           (
             SELECT cf.file_path
             FROM card_files cf
@@ -235,6 +236,7 @@ router.get("/cards/:id/export.png", async (req: Request, res: Response) => {
           id: string;
           name: string | null;
           data_json: string;
+          primary_file_path: string | null;
           file_path: string | null;
         }
       | undefined;
@@ -242,10 +244,11 @@ router.get("/cards/:id/export.png", async (req: Request, res: Response) => {
     if (!row) {
       throw new AppError({ status: 404, code: "api.cards.not_found" });
     }
-    if (!row.file_path) {
+    const mainFilePath = row.primary_file_path ?? row.file_path;
+    if (!mainFilePath) {
       throw new AppError({ status: 404, code: "api.image.not_found" });
     }
-    if (!existsSync(row.file_path)) {
+    if (!existsSync(mainFilePath)) {
       throw new AppError({ status: 404, code: "api.image.file_not_found" });
     }
 
@@ -254,7 +257,7 @@ router.get("/cards/:id/export.png", async (req: Request, res: Response) => {
       throw new AppError({ status: 500, code: "api.export.invalid_data_json" });
     }
 
-    const originalPng = await readFile(row.file_path);
+    const originalPng = await readFile(mainFilePath);
     const outPng = buildPngWithCcv3TextChunk({
       inputPng: originalPng,
       ccv3Object,
@@ -331,6 +334,7 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
           c.created_at,
           c.avatar_path,
           c.data_json,
+          c.primary_file_path,
           c.personality,
           c.scenario,
           c.first_mes,
@@ -370,6 +374,7 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
           created_at: number;
           avatar_path: string | null;
           data_json: string;
+          primary_file_path: string | null;
           personality: string | null;
           scenario: string | null;
           first_mes: string | null;
@@ -408,8 +413,15 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
     const file_paths = fileRows
       .map((r) => r.file_path)
       .filter((p) => typeof p === "string" && p.trim().length > 0);
+    const primary = row.primary_file_path?.trim()
+      ? row.primary_file_path.trim()
+      : null;
     const main_file_path =
-      file_paths.length > 0 ? file_paths[0] : row.file_path ?? null;
+      primary && file_paths.includes(primary)
+        ? primary
+        : file_paths.length > 0
+        ? file_paths[0]
+        : row.file_path ?? null;
     const duplicates = main_file_path
       ? file_paths.filter((p) => p !== main_file_path)
       : file_paths.slice(1);
@@ -450,6 +462,7 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
       file_path: main_file_path,
       file_paths,
       duplicates,
+      primary_file_path: primary,
       avatar_url,
 
       // normalized content
@@ -636,6 +649,58 @@ router.delete("/cards/:id", async (req: Request, res: Response) => {
     return sendError(res, error, {
       status: 500,
       code: "api.cards.delete_card_failed",
+    });
+  }
+});
+
+// PUT /api/cards/:id/main-file - установить основной файл карточки (override)
+router.put("/cards/:id/main-file", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const file_path = (req.body as any)?.file_path;
+    const normalized = typeof file_path === "string" ? file_path.trim() : null;
+
+    const db = getDb(req);
+
+    const existsCard = db
+      .prepare(`SELECT 1 FROM cards WHERE id = ? LIMIT 1`)
+      .get(id) as { 1: number } | undefined;
+    if (!existsCard) {
+      throw new AppError({ status: 404, code: "api.cards.not_found" });
+    }
+
+    if (normalized) {
+      const belongs = db
+        .prepare(
+          `
+          SELECT 1
+          FROM card_files
+          WHERE card_id = ? AND file_path = ?
+          LIMIT 1
+        `
+        )
+        .get(id, normalized) as { 1: number } | undefined;
+      if (!belongs) {
+        throw new AppError({ status: 404, code: "api.cards.file_not_found" });
+      }
+
+      db.prepare(`UPDATE cards SET primary_file_path = ? WHERE id = ?`).run(
+        normalized,
+        id
+      );
+    } else {
+      // null/undefined/empty => сброс override (вернёмся к "самому старому" файлу)
+      db.prepare(`UPDATE cards SET primary_file_path = NULL WHERE id = ?`).run(
+        id
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    logger.errorKey(error, "api.cards.set_main_file_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.cards.set_main_file_failed",
     });
   }
 });

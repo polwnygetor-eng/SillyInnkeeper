@@ -38,6 +38,8 @@ import { $isCensored } from "@/features/view-settings";
 import { CreatorNotesRenderer } from "./CreatorNotesRenderer";
 import i18n from "@/shared/i18n/i18n";
 import { deleteCard, deleteCardFileDuplicate } from "@/shared/api/cards";
+import { CopyableTruncatedText } from "@/shared/ui/CopyableTruncatedText";
+import { setCardMainFile } from "@/shared/api/cards";
 
 function formatDate(ms: number | null | undefined, locale: string): string {
   const t = typeof ms === "number" ? ms : Number(ms);
@@ -203,6 +205,7 @@ function ActionsPanel({
   >(null);
   const [isDeletingDuplicate, setIsDeletingDuplicate] = useState(false);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
+  const [isSettingMainFile, setIsSettingMainFile] = useState(false);
 
   const exportPngUrl = details?.id
     ? `/api/cards/${encodeURIComponent(details.id)}/export.png?download=1`
@@ -292,6 +295,29 @@ function ActionsPanel({
     }
   }
 
+  async function makeDuplicateMain(filePath: string): Promise<void> {
+    if (!details?.id) return;
+    if (isSettingMainFile) return;
+    setIsSettingMainFile(true);
+    try {
+      await setCardMainFile(details.id, filePath);
+      notifications.show({
+        title: i18n.t("cardDetails.mainFile"),
+        message: i18n.t("cardDetails.mainFileUpdated"),
+        color: "green",
+      });
+      openCard(details.id);
+    } catch {
+      notifications.show({
+        title: i18n.t("cardDetails.mainFile"),
+        message: i18n.t("cardDetails.mainFileUpdateFailed"),
+        color: "red",
+      });
+    } finally {
+      setIsSettingMainFile(false);
+    }
+  }
+
   return (
     <>
       <Paper
@@ -353,49 +379,32 @@ function ActionsPanel({
               <Text size="sm" c="dimmed">
                 {i18n.t("cardDetails.mainFile")}
               </Text>
-              <Group gap={6} wrap="nowrap" align="flex-start">
-                <Tooltip
-                  label={details?.file_path ?? i18n.t("empty.dash")}
-                  withArrow
-                >
-                  <Text
-                    size="sm"
-                    lineClamp={1}
-                    style={{ maxWidth: 180, wordBreak: "break-all" }}
-                  >
-                    {getFilenameFromPath(details?.file_path)}
-                  </Text>
-                </Tooltip>
-                {details?.file_path && (
-                  <CopyButton value={details.file_path}>
-                    {({ copied, copy }) => (
-                      <Button variant="subtle" size="xs" onClick={copy}>
-                        {copied ? "OK" : i18n.t("actions.copy")}
-                      </Button>
-                    )}
-                  </CopyButton>
-                )}
-              </Group>
+              <CopyableTruncatedText
+                value={getFilenameFromPath(details?.file_path)}
+                copyValue={details?.file_path ?? ""}
+                tooltip={details?.file_path ?? i18n.t("empty.dash")}
+                keepStart={16}
+                keepEnd={14}
+                maxWidth={220}
+                onCopiedMessage={i18n.t("cardDetails.copiedPath")}
+                onCopyFailedMessage={i18n.t("cardDetails.copyFailed")}
+              />
             </Group>
 
             <Group justify="space-between" wrap="nowrap">
               <Text size="sm" c="dimmed">
                 ID
               </Text>
-              <Group gap={6} wrap="nowrap">
-                <Text size="sm" lineClamp={1} style={{ maxWidth: 140 }}>
-                  {details?.id ?? i18n.t("empty.dash")}
-                </Text>
-                {details?.id && (
-                  <CopyButton value={details.id}>
-                    {({ copied, copy }) => (
-                      <Button variant="subtle" size="xs" onClick={copy}>
-                        {copied ? "OK" : i18n.t("actions.copy")}
-                      </Button>
-                    )}
-                  </CopyButton>
-                )}
-              </Group>
+              <CopyableTruncatedText
+                value={details?.id ?? i18n.t("empty.dash")}
+                copyValue={details?.id ?? ""}
+                tooltip={details?.id ?? i18n.t("empty.dash")}
+                keepStart={10}
+                keepEnd={10}
+                maxWidth={220}
+                onCopiedMessage={i18n.t("cardDetails.copiedId")}
+                onCopyFailedMessage={i18n.t("cardDetails.copyFailed")}
+              />
             </Group>
 
             <Group justify="space-between" wrap="nowrap">
@@ -437,10 +446,44 @@ function ActionsPanel({
                       align="flex-start"
                       wrap="nowrap"
                     >
-                      <Text size="sm" style={{ flex: 1 }} lineClamp={2}>
-                        {p}
-                      </Text>
+                      <CopyableTruncatedText
+                        value={p}
+                        copyValue={p}
+                        tooltip={p}
+                        keepStart={18}
+                        keepEnd={18}
+                        maxWidth="100%"
+                        onCopiedMessage={i18n.t("cardDetails.copiedPath")}
+                        onCopyFailedMessage={i18n.t("cardDetails.copyFailed")}
+                      />
                       <Group gap={6} wrap="nowrap">
+                        <Tooltip
+                          label={i18n.t("cardDetails.makeMainFile")}
+                          withArrow
+                        >
+                          <ActionIcon
+                            variant="light"
+                            color="indigo"
+                            onClick={() => void makeDuplicateMain(p)}
+                            loading={isSettingMainFile}
+                            aria-label={i18n.t("cardDetails.makeMainFile")}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 2l2.4 6.9H22l-5.8 4.2L18.6 20 12 15.8 5.4 20l2.4-6.9L2 8.9h7.6z" />
+                            </svg>
+                          </ActionIcon>
+                        </Tooltip>
+
                         <Tooltip
                           label={i18n.t("cardDetails.showInExplorer")}
                           withArrow

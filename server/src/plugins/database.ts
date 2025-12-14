@@ -141,6 +141,8 @@ function initializeSchema(db: Database.Database): void {
     "post_history_instructions",
     "post_history_instructions TEXT"
   );
+  // cards: возможность вручную выбрать "основной" файл (если NULL — берём самый старый по file_birthtime)
+  addColumnIfMissing("cards", "primary_file_path", "primary_file_path TEXT");
   addColumnIfMissing(
     "cards",
     "alternate_greetings_count",
@@ -202,6 +204,7 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_cards_has_character_book ON cards(has_character_book);
     CREATE INDEX IF NOT EXISTS idx_cards_alternate_greetings_count ON cards(alternate_greetings_count);
     CREATE INDEX IF NOT EXISTS idx_cards_prompt_tokens_est ON cards(prompt_tokens_est);
+    CREATE INDEX IF NOT EXISTS idx_cards_primary_file_path ON cards(primary_file_path);
   `);
 
   // Уникальность для дедупликации внутри библиотеки.
