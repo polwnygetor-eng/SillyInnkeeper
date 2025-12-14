@@ -130,3 +130,17 @@ export async function deleteCardFileDuplicate(
 
   return response.json();
 }
+
+export async function deleteCard(cardId: string): Promise<{ ok: true }> {
+  const response = await fetch(`/api/cards/${encodeURIComponent(cardId)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const errorText = (await response.text().catch(() => "")).trim();
+    if (errorText) throw new Error(errorText);
+    throw new Error(response.statusText);
+  }
+
+  return response.json();
+}

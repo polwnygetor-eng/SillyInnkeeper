@@ -23,7 +23,7 @@ router.get("/image/:id", async (req: Request, res: Response) => {
 
     // Получаем file_path из таблицы card_files по card_id
     const fileRow = dbService.queryOne<{ file_path: string }>(
-      "SELECT file_path FROM card_files WHERE card_id = ? LIMIT 1",
+      "SELECT file_path FROM card_files WHERE card_id = ? ORDER BY file_birthtime ASC, file_path ASC LIMIT 1",
       [id]
     );
 

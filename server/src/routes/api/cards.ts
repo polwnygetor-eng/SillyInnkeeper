@@ -222,6 +222,7 @@ router.get("/cards/:id/export.png", async (req: Request, res: Response) => {
             SELECT cf.file_path
             FROM card_files cf
             WHERE cf.card_id = c.id
+            ORDER BY cf.file_birthtime ASC, cf.file_path ASC
             LIMIT 1
           ) AS file_path
         FROM cards c
@@ -350,6 +351,7 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
             SELECT cf.file_path
             FROM card_files cf
             WHERE cf.card_id = c.id
+            ORDER BY cf.file_birthtime ASC, cf.file_path ASC
             LIMIT 1
           ) AS file_path
         FROM cards c
@@ -406,8 +408,10 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
     const file_paths = fileRows
       .map((r) => r.file_path)
       .filter((p) => typeof p === "string" && p.trim().length > 0);
-    const duplicates = row.file_path
-      ? file_paths.filter((p) => p !== row.file_path)
+    const main_file_path =
+      file_paths.length > 0 ? file_paths[0] : row.file_path ?? null;
+    const duplicates = main_file_path
+      ? file_paths.filter((p) => p !== main_file_path)
       : file_paths.slice(1);
 
     const tags = row.tags ? safeJsonParse<string[]>(row.tags) : null;
@@ -443,7 +447,7 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
       tags: tags ?? null,
       spec_version: row.spec_version,
       created_at: row.created_at,
-      file_path: row.file_path,
+      file_path: main_file_path,
       file_paths,
       duplicates,
       avatar_url,
@@ -570,6 +574,68 @@ router.delete("/cards/:id/files", async (req: Request, res: Response) => {
     return sendError(res, error, {
       status: 500,
       code: "api.cards.delete_file_failed",
+    });
+  }
+});
+
+// DELETE /api/cards/:id - удаление карточки полностью (все файлы + БД)
+router.delete("/cards/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const db = getDb(req);
+
+    const cardRow = db
+      .prepare(`SELECT avatar_path FROM cards WHERE id = ? LIMIT 1`)
+      .get(id) as { avatar_path: string | null } | undefined;
+
+    if (!cardRow) {
+      throw new AppError({ status: 404, code: "api.cards.not_found" });
+    }
+
+    const fileRows = db
+      .prepare(
+        `
+        SELECT cf.file_path
+        FROM card_files cf
+        WHERE cf.card_id = ?
+        ORDER BY cf.file_birthtime ASC, cf.file_path ASC
+      `
+      )
+      .all(id) as Array<{ file_path: string }>;
+
+    const file_paths = fileRows
+      .map((r) => r.file_path)
+      .filter((p) => typeof p === "string" && p.trim().length > 0);
+
+    // Сначала удаляем файлы с диска. Если есть критичная ошибка — не трогаем БД.
+    for (const p of file_paths) {
+      const normalized = p.trim();
+      if (!normalized) continue;
+      await unlink(normalized).catch((e: any) => {
+        if (e && (e.code === "ENOENT" || e.code === "ENOTDIR")) return;
+        throw e;
+      });
+    }
+
+    // Затем удаляем карточку из БД (card_files/card_tags удалятся каскадом)
+    db.transaction(() => {
+      db.prepare(`DELETE FROM cards WHERE id = ?`).run(id);
+    })();
+
+    // Чистим миниатюру (best-effort)
+    if (cardRow.avatar_path) {
+      const uuid = cardRow.avatar_path.split("/").pop()?.replace(".webp", "");
+      if (uuid) {
+        await deleteThumbnail(uuid);
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    logger.errorKey(error, "api.cards.delete_card_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.cards.delete_card_failed",
     });
   }
 });

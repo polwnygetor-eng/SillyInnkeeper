@@ -143,6 +143,7 @@ const ru = {
     delete: "Удалить",
     rename: "Переименовать",
     metadata: "Метаданные",
+    mainFile: "Файл",
     createdAt: "Создано",
     tokensApprox: "Токены (≈)",
     tabsMain: "Основное",
@@ -177,6 +178,11 @@ const ru = {
       "Файл будет удалён с диска и из базы данных. Это действие нельзя отменить.",
     duplicateDeleted: "Дубль удалён",
     duplicateDeleteFailed: "Не удалось удалить дубль",
+    confirmDeleteCardTitle: "Удалить карточку?",
+    confirmDeleteCardMessage:
+      "Карточка будет удалена полностью: все файлы (включая дубликаты) будут удалены с диска и из базы данных. Это действие нельзя отменить.",
+    cardDeleted: "Карточка удалена",
+    cardDeleteFailed: "Не удалось удалить карточку",
   },
   creatorNotes: {
     title: "Заметки автора",

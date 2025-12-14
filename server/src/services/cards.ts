@@ -211,6 +211,7 @@ export class CardsService {
           SELECT cf.file_path 
           FROM card_files cf 
           WHERE cf.card_id = c.id 
+          ORDER BY cf.file_birthtime ASC, cf.file_path ASC
           LIMIT 1
         ) as file_path
       FROM cards c

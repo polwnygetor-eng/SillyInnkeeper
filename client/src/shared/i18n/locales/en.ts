@@ -141,6 +141,7 @@ const en = {
     delete: "Delete",
     rename: "Rename",
     metadata: "Metadata",
+    mainFile: "File",
     createdAt: "Created",
     tokensApprox: "Tokens (≈)",
     tabsMain: "Main",
@@ -175,6 +176,11 @@ const en = {
       "The file will be deleted from disk and from the database. This action cannot be undone.",
     duplicateDeleted: "Duplicate deleted",
     duplicateDeleteFailed: "Failed to delete duplicate",
+    confirmDeleteCardTitle: "Delete card?",
+    confirmDeleteCardMessage:
+      "The card will be deleted completely: all files (including duplicates) will be removed from disk and from the database. This action cannot be undone.",
+    cardDeleted: "Card deleted",
+    cardDeleteFailed: "Failed to delete card",
   },
   creatorNotes: {
     title: "Creator notes",

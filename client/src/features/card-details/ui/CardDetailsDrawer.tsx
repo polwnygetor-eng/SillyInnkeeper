@@ -37,12 +37,19 @@ import {
 import { $isCensored } from "@/features/view-settings";
 import { CreatorNotesRenderer } from "./CreatorNotesRenderer";
 import i18n from "@/shared/i18n/i18n";
-import { deleteCardFileDuplicate } from "@/shared/api/cards";
+import { deleteCard, deleteCardFileDuplicate } from "@/shared/api/cards";
 
 function formatDate(ms: number | null | undefined, locale: string): string {
   const t = typeof ms === "number" ? ms : Number(ms);
   if (!Number.isFinite(t) || t <= 0) return i18n.t("empty.dash");
   return new Date(t).toLocaleString(locale);
+}
+
+function getFilenameFromPath(filePath: string | null | undefined): string {
+  const p = (filePath ?? "").trim();
+  if (!p) return i18n.t("empty.dash");
+  const parts = p.split(/[/\\]+/);
+  return parts[parts.length - 1] || i18n.t("empty.dash");
 }
 
 function CollapsibleFieldBlock({
@@ -188,11 +195,14 @@ function ActionsPanel({
   locale: string;
 }) {
   const [isSendingPlay, setIsSendingPlay] = useState(false);
-  const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
+  const [confirmDeleteDuplicateOpened, setConfirmDeleteDuplicateOpened] =
+    useState(false);
+  const [confirmDeleteCardOpened, setConfirmDeleteCardOpened] = useState(false);
   const [selectedDuplicatePath, setSelectedDuplicatePath] = useState<
     string | null
   >(null);
   const [isDeletingDuplicate, setIsDeletingDuplicate] = useState(false);
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
 
   const exportPngUrl = details?.id
     ? `/api/cards/${encodeURIComponent(details.id)}/export.png?download=1`
@@ -229,6 +239,7 @@ function ActionsPanel({
   }
 
   const duplicates = details?.duplicates ?? [];
+  const hasDuplicates = duplicates.length > 0;
 
   async function deleteDuplicateConfirmed(): Promise<void> {
     if (!details?.id) return;
@@ -243,7 +254,7 @@ function ActionsPanel({
         message: i18n.t("cardDetails.duplicateDeleted"),
         color: "green",
       });
-      setConfirmDeleteOpened(false);
+      setConfirmDeleteDuplicateOpened(false);
       setSelectedDuplicatePath(null);
       openCard(details.id);
     } catch (e) {
@@ -254,6 +265,30 @@ function ActionsPanel({
       });
     } finally {
       setIsDeletingDuplicate(false);
+    }
+  }
+
+  async function deleteCardConfirmed(): Promise<void> {
+    if (!details?.id) return;
+    if (isDeletingCard) return;
+    setIsDeletingCard(true);
+    try {
+      await deleteCard(details.id);
+      notifications.show({
+        title: i18n.t("cardDetails.delete"),
+        message: i18n.t("cardDetails.cardDeleted"),
+        color: "green",
+      });
+      setConfirmDeleteCardOpened(false);
+      closeCard();
+    } catch (e) {
+      notifications.show({
+        title: i18n.t("cardDetails.delete"),
+        message: i18n.t("cardDetails.cardDeleteFailed"),
+        color: "red",
+      });
+    } finally {
+      setIsDeletingCard(false);
     }
   }
 
@@ -294,11 +329,15 @@ function ActionsPanel({
           >
             {i18n.t("cardDetails.download")}
           </Button>
-          <Tooltip label={i18n.t("cardDetails.soon")} withArrow>
-            <Button fullWidth variant="light" color="red" disabled>
-              {i18n.t("cardDetails.delete")}
-            </Button>
-          </Tooltip>
+          <Button
+            fullWidth
+            variant="light"
+            color="red"
+            disabled={!details?.id}
+            onClick={() => setConfirmDeleteCardOpened(true)}
+          >
+            {i18n.t("cardDetails.delete")}
+          </Button>
           <Tooltip label={i18n.t("cardDetails.soon")} withArrow>
             <Button fullWidth variant="light" disabled>
               {i18n.t("cardDetails.rename")}
@@ -310,6 +349,35 @@ function ActionsPanel({
           <Text fw={650}>{i18n.t("cardDetails.metadata")}</Text>
 
           <Stack gap={6}>
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <Text size="sm" c="dimmed">
+                {i18n.t("cardDetails.mainFile")}
+              </Text>
+              <Group gap={6} wrap="nowrap" align="flex-start">
+                <Tooltip
+                  label={details?.file_path ?? i18n.t("empty.dash")}
+                  withArrow
+                >
+                  <Text
+                    size="sm"
+                    lineClamp={1}
+                    style={{ maxWidth: 180, wordBreak: "break-all" }}
+                  >
+                    {getFilenameFromPath(details?.file_path)}
+                  </Text>
+                </Tooltip>
+                {details?.file_path && (
+                  <CopyButton value={details.file_path}>
+                    {({ copied, copy }) => (
+                      <Button variant="subtle" size="xs" onClick={copy}>
+                        {copied ? "OK" : i18n.t("actions.copy")}
+                      </Button>
+                    )}
+                  </CopyButton>
+                )}
+              </Group>
+            </Group>
+
             <Group justify="space-between" wrap="nowrap">
               <Text size="sm" c="dimmed">
                 ID
@@ -356,96 +424,94 @@ function ActionsPanel({
             </Group>
           </Stack>
 
-          <Divider my="sm" />
+          {hasDuplicates && (
+            <>
+              <Divider my="sm" />
 
-          <Text fw={650}>{i18n.t("cardDetails.duplicatesTitle")}</Text>
-          {duplicates.length === 0 ? (
-            <Text c="dimmed" size="sm">
-              {i18n.t("empty.dash")}
-            </Text>
-          ) : (
-            <Stack gap={8}>
-              {duplicates.map((p) => (
-                <Paper key={p} p="xs">
-                  <Group
-                    justify="space-between"
-                    align="flex-start"
-                    wrap="nowrap"
-                  >
-                    <Text size="sm" style={{ flex: 1 }} lineClamp={2}>
-                      {p}
-                    </Text>
-                    <Group gap={6} wrap="nowrap">
-                      <Tooltip
-                        label={i18n.t("cardDetails.showInExplorer")}
-                        withArrow
-                      >
-                        <ActionIcon
-                          variant="light"
-                          disabled
-                          aria-label={i18n.t("cardDetails.showInExplorer")}
+              <Text fw={650}>{i18n.t("cardDetails.duplicatesTitle")}</Text>
+              <Stack gap={8}>
+                {duplicates.map((p) => (
+                  <Paper key={p} p="xs">
+                    <Group
+                      justify="space-between"
+                      align="flex-start"
+                      wrap="nowrap"
+                    >
+                      <Text size="sm" style={{ flex: 1 }} lineClamp={2}>
+                        {p}
+                      </Text>
+                      <Group gap={6} wrap="nowrap">
+                        <Tooltip
+                          label={i18n.t("cardDetails.showInExplorer")}
+                          withArrow
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                          <ActionIcon
+                            variant="light"
+                            disabled
+                            aria-label={i18n.t("cardDetails.showInExplorer")}
                           >
-                            <path d="M3 7h5l2 3h11v9a2 2 0 0 1-2 2H3z" />
-                            <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </ActionIcon>
-                      </Tooltip>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 7h5l2 3h11v9a2 2 0 0 1-2 2H3z" />
+                              <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </ActionIcon>
+                        </Tooltip>
 
-                      <Tooltip
-                        label={i18n.t("cardDetails.deleteDuplicate")}
-                        withArrow
-                      >
-                        <ActionIcon
-                          variant="light"
-                          color="red"
-                          onClick={() => {
-                            setSelectedDuplicatePath(p);
-                            setConfirmDeleteOpened(true);
-                          }}
-                          aria-label={i18n.t("cardDetails.deleteDuplicate")}
+                        <Tooltip
+                          label={i18n.t("cardDetails.deleteDuplicate")}
+                          withArrow
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                          <ActionIcon
+                            variant="light"
+                            color="red"
+                            onClick={() => {
+                              setSelectedDuplicatePath(p);
+                              setConfirmDeleteDuplicateOpened(true);
+                            }}
+                            aria-label={i18n.t("cardDetails.deleteDuplicate")}
                           >
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                          </svg>
-                        </ActionIcon>
-                      </Tooltip>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
                     </Group>
-                  </Group>
-                </Paper>
-              ))}
-            </Stack>
+                  </Paper>
+                ))}
+              </Stack>
+            </>
           )}
         </Stack>
       </Paper>
 
       <Modal
-        opened={confirmDeleteOpened}
-        onClose={() => setConfirmDeleteOpened(false)}
+        opened={confirmDeleteDuplicateOpened}
+        onClose={() => setConfirmDeleteDuplicateOpened(false)}
         title={i18n.t("cardDetails.confirmDeleteDuplicateTitle")}
       >
         <Stack gap="md">
@@ -456,7 +522,7 @@ function ActionsPanel({
           <Group justify="flex-end">
             <Button
               variant="default"
-              onClick={() => setConfirmDeleteOpened(false)}
+              onClick={() => setConfirmDeleteDuplicateOpened(false)}
               disabled={isDeletingDuplicate}
             >
               {i18n.t("actions.cancel")}
@@ -467,6 +533,34 @@ function ActionsPanel({
               loading={isDeletingDuplicate}
             >
               {i18n.t("cardDetails.deleteDuplicate")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={confirmDeleteCardOpened}
+        onClose={() => setConfirmDeleteCardOpened(false)}
+        title={i18n.t("cardDetails.confirmDeleteCardTitle")}
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            {i18n.t("cardDetails.confirmDeleteCardMessage")}
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setConfirmDeleteCardOpened(false)}
+              disabled={isDeletingCard}
+            >
+              {i18n.t("actions.cancel")}
+            </Button>
+            <Button
+              color="red"
+              onClick={() => void deleteCardConfirmed()}
+              loading={isDeletingCard}
+            >
+              {i18n.t("cardDetails.delete")}
             </Button>
           </Group>
         </Stack>
@@ -508,7 +602,7 @@ export function CardDetailsDrawer() {
       >
         <Grid gutter="md" columns={24}>
           {/* Left pane */}
-          <Grid.Col span={{ base: 24, md: 18 }}>
+          <Grid.Col span={{ base: 24, md: 18, lg: 19 }}>
             <Stack gap="md">
               {isLoading && (
                 <Paper p="md">
@@ -695,7 +789,7 @@ export function CardDetailsDrawer() {
           </Grid.Col>
 
           {/* Right pane */}
-          <Grid.Col span={{ base: 24, md: 6 }}>
+          <Grid.Col span={{ base: 24, md: 6, lg: 5 }}>
             <ActionsPanel details={details} locale={locale} />
           </Grid.Col>
         </Grid>
