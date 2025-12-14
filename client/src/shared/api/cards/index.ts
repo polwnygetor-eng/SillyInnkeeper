@@ -166,3 +166,25 @@ export async function setCardMainFile(
 
   return response.json();
 }
+
+export async function renameCardMainFile(
+  cardId: string,
+  filename: string
+): Promise<{ ok: true; file_path?: string }> {
+  const response = await fetch(
+    `/api/cards/${encodeURIComponent(cardId)}/rename-main-file`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = (await response.text().catch(() => "")).trim();
+    if (errorText) throw new Error(errorText);
+    throw new Error(response.statusText);
+  }
+
+  return response.json();
+}

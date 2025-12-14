@@ -1,8 +1,9 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { unlink } from "fs-extra";
+import { rename, unlink } from "fs-extra";
+import { dirname, join } from "node:path";
 import { createCardsService } from "../../services/cards";
 import { logger } from "../../utils/logger";
 import type {
@@ -704,5 +705,145 @@ router.put("/cards/:id/main-file", async (req: Request, res: Response) => {
     });
   }
 });
+
+// PUT /api/cards/:id/rename-main-file - переименовать ОСНОВНОЙ файл карточки
+router.put(
+  "/cards/:id/rename-main-file",
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const filename = (req.body as any)?.filename;
+      if (typeof filename !== "string" || filename.trim().length === 0) {
+        throw new AppError({ status: 400, code: "api.cards.invalid_filename" });
+      }
+
+      const db = getDb(req);
+
+      // main file = COALESCE(primary_file_path, oldest)
+      const row = db
+        .prepare(
+          `
+        SELECT
+          c.primary_file_path,
+          COALESCE(
+            c.primary_file_path,
+            (
+              SELECT cf.file_path
+              FROM card_files cf
+              WHERE cf.card_id = c.id
+              ORDER BY cf.file_birthtime ASC, cf.file_path ASC
+              LIMIT 1
+            )
+          ) as main_file_path
+        FROM cards c
+        WHERE c.id = ?
+        LIMIT 1
+      `
+        )
+        .get(id) as
+        | { primary_file_path: string | null; main_file_path: string | null }
+        | undefined;
+
+      if (!row) {
+        throw new AppError({ status: 404, code: "api.cards.not_found" });
+      }
+      if (!row.main_file_path) {
+        throw new AppError({ status: 404, code: "api.image.not_found" });
+      }
+
+      const oldPath = row.main_file_path;
+      if (!existsSync(oldPath)) {
+        throw new AppError({ status: 404, code: "api.image.file_not_found" });
+      }
+
+      const rawBase = filename.trim().replace(/\.png$/i, "");
+      const base = sanitizeWindowsFilenameBase(rawBase, `card-${id}`);
+      const nextPath = join(dirname(oldPath), `${base}.png`);
+
+      // No-op (в т.ч. на Windows с нечувствительностью к регистру)
+      if (nextPath.toLowerCase() === oldPath.toLowerCase()) {
+        res.json({ ok: true });
+        return;
+      }
+
+      if (existsSync(nextPath)) {
+        throw new AppError({
+          status: 409,
+          code: "api.cards.rename_target_exists",
+        });
+      }
+
+      // Сохраняем метаданные строки card_files (она PK по file_path)
+      const cf = db
+        .prepare(
+          `
+        SELECT file_mtime, file_birthtime, file_size
+        FROM card_files
+        WHERE file_path = ?
+        LIMIT 1
+      `
+        )
+        .get(oldPath) as
+        | { file_mtime: number; file_birthtime: number; file_size: number }
+        | undefined;
+
+      // 1) rename на диске
+      await rename(oldPath, nextPath);
+
+      // 2) обновляем БД
+      const folderPath = dirname(nextPath);
+      const stats = statSync(nextPath);
+      const fileMtime = Number.isFinite(stats.mtimeMs)
+        ? stats.mtimeMs
+        : cf?.file_mtime ?? Date.now();
+      const fileBirthtime =
+        Number.isFinite(stats.birthtimeMs) && stats.birthtimeMs > 0
+          ? stats.birthtimeMs
+          : cf?.file_birthtime ?? fileMtime;
+      const fileSize = Number.isFinite(stats.size)
+        ? stats.size
+        : cf?.file_size ?? 0;
+
+      db.transaction(() => {
+        db.prepare(
+          `
+        UPDATE card_files
+        SET
+          file_path = ?,
+          folder_path = ?,
+          file_mtime = ?,
+          file_birthtime = ?,
+          file_size = ?
+        WHERE file_path = ?
+      `
+        ).run(
+          nextPath,
+          folderPath,
+          fileMtime,
+          fileBirthtime,
+          fileSize,
+          oldPath
+        );
+
+        // Если override указывал на старый путь — обновляем на новый
+        db.prepare(
+          `
+        UPDATE cards
+        SET primary_file_path = ?
+        WHERE id = ? AND primary_file_path = ?
+      `
+        ).run(nextPath, id, oldPath);
+      })();
+
+      res.json({ ok: true, file_path: nextPath });
+    } catch (error) {
+      logger.errorKey(error, "api.cards.rename_main_file_failed");
+      return sendError(res, error, {
+        status: 500,
+        code: "api.cards.rename_main_file_failed",
+      });
+    }
+  }
+);
 
 export default router;

@@ -138,6 +138,8 @@ const en = {
     actions: "Actions",
     soon: "Soon",
     download: "Download",
+    save: "Save",
+    openInExplorer: "Open in Explorer",
     delete: "Delete",
     rename: "Rename",
     metadata: "Metadata",
@@ -187,6 +189,14 @@ const en = {
       "The card will be deleted completely: all files (including duplicates) will be removed from disk and from the database. This action cannot be undone.",
     cardDeleted: "Card deleted",
     cardDeleteFailed: "Failed to delete card",
+
+    renameMainFileTitle: "Rename file",
+    renameMainFileHint:
+      "Only the main file is renamed. The .png extension will be added automatically.",
+    renameMainFileInputLabel: "New filename",
+    renameMainFilePlaceholder: "Enter name…",
+    renameOk: "File renamed",
+    renameFailed: "Failed to rename file",
   },
   creatorNotes: {
     title: "Creator notes",

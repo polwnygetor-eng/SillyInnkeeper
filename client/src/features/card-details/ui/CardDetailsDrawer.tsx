@@ -19,6 +19,7 @@ import {
   Stack,
   Tabs,
   Text,
+  TextInput,
   Title,
   Tooltip,
   Image,
@@ -39,7 +40,7 @@ import { CreatorNotesRenderer } from "./CreatorNotesRenderer";
 import i18n from "@/shared/i18n/i18n";
 import { deleteCard, deleteCardFileDuplicate } from "@/shared/api/cards";
 import { CopyableTruncatedText } from "@/shared/ui/CopyableTruncatedText";
-import { setCardMainFile } from "@/shared/api/cards";
+import { renameCardMainFile, setCardMainFile } from "@/shared/api/cards";
 
 function formatDate(ms: number | null | undefined, locale: string): string {
   const t = typeof ms === "number" ? ms : Number(ms);
@@ -52,6 +53,10 @@ function getFilenameFromPath(filePath: string | null | undefined): string {
   if (!p) return i18n.t("empty.dash");
   const parts = p.split(/[/\\]+/);
   return parts[parts.length - 1] || i18n.t("empty.dash");
+}
+
+function stripPngExt(name: string): string {
+  return name.replace(/\.png$/i, "");
 }
 
 function CollapsibleFieldBlock({
@@ -200,12 +205,15 @@ function ActionsPanel({
   const [confirmDeleteDuplicateOpened, setConfirmDeleteDuplicateOpened] =
     useState(false);
   const [confirmDeleteCardOpened, setConfirmDeleteCardOpened] = useState(false);
+  const [renameOpened, setRenameOpened] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [selectedDuplicatePath, setSelectedDuplicatePath] = useState<
     string | null
   >(null);
   const [isDeletingDuplicate, setIsDeletingDuplicate] = useState(false);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
   const [isSettingMainFile, setIsSettingMainFile] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const exportPngUrl = details?.id
     ? `/api/cards/${encodeURIComponent(details.id)}/export.png?download=1`
@@ -295,6 +303,35 @@ function ActionsPanel({
     }
   }
 
+  async function renameMainFileConfirmed(): Promise<void> {
+    if (!details?.id) return;
+    if (!details?.file_path) return;
+    if (isRenaming) return;
+
+    const next = renameValue.trim();
+    if (next.length === 0) return;
+
+    setIsRenaming(true);
+    try {
+      await renameCardMainFile(details.id, next);
+      notifications.show({
+        title: i18n.t("cardDetails.rename"),
+        message: i18n.t("cardDetails.renameOk"),
+        color: "green",
+      });
+      setRenameOpened(false);
+      openCard(details.id);
+    } catch (e) {
+      notifications.show({
+        title: i18n.t("cardDetails.rename"),
+        message: i18n.t("cardDetails.renameFailed"),
+        color: "red",
+      });
+    } finally {
+      setIsRenaming(false);
+    }
+  }
+
   async function makeDuplicateMain(filePath: string): Promise<void> {
     if (!details?.id) return;
     if (isSettingMainFile) return;
@@ -355,6 +392,19 @@ function ActionsPanel({
           >
             {i18n.t("cardDetails.download")}
           </Button>
+
+          <Tooltip label={i18n.t("cardDetails.soon")} withArrow>
+            <Button fullWidth variant="light" disabled>
+              {i18n.t("cardDetails.save")}
+            </Button>
+          </Tooltip>
+
+          <Tooltip label={i18n.t("cardDetails.soon")} withArrow>
+            <Button fullWidth variant="light" disabled>
+              {i18n.t("cardDetails.openInExplorer")}
+            </Button>
+          </Tooltip>
+
           <Button
             fullWidth
             variant="light"
@@ -364,11 +414,18 @@ function ActionsPanel({
           >
             {i18n.t("cardDetails.delete")}
           </Button>
-          <Tooltip label={i18n.t("cardDetails.soon")} withArrow>
-            <Button fullWidth variant="light" disabled>
-              {i18n.t("cardDetails.rename")}
-            </Button>
-          </Tooltip>
+          <Button
+            fullWidth
+            variant="light"
+            disabled={!details?.file_path}
+            onClick={() => {
+              const base = stripPngExt(getFilenameFromPath(details?.file_path));
+              setRenameValue(base === i18n.t("empty.dash") ? "" : base);
+              setRenameOpened(true);
+            }}
+          >
+            {i18n.t("cardDetails.rename")}
+          </Button>
 
           <Divider my="sm" />
 
@@ -604,6 +661,41 @@ function ActionsPanel({
               loading={isDeletingCard}
             >
               {i18n.t("cardDetails.delete")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={renameOpened}
+        onClose={() => setRenameOpened(false)}
+        title={i18n.t("cardDetails.renameMainFileTitle")}
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            {i18n.t("cardDetails.renameMainFileHint")}
+          </Text>
+          <TextInput
+            label={i18n.t("cardDetails.renameMainFileInputLabel")}
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.currentTarget.value)}
+            placeholder={i18n.t("cardDetails.renameMainFilePlaceholder")}
+            rightSection={<Text c="dimmed">.png</Text>}
+          />
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setRenameOpened(false)}
+              disabled={isRenaming}
+            >
+              {i18n.t("actions.cancel")}
+            </Button>
+            <Button
+              onClick={() => void renameMainFileConfirmed()}
+              loading={isRenaming}
+              disabled={renameValue.trim().length === 0}
+            >
+              {i18n.t("actions.save")}
             </Button>
           </Group>
         </Stack>
