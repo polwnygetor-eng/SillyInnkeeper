@@ -459,11 +459,20 @@ export function CardDetailsActionsPanel({
           >
             {i18n.t("cardDetails.playInSillyTavern")}
           </Button>
+          <Button
+            fullWidth
+            variant="filled"
+            color="blue"
+            onClick={openSaveModalOrNotifyNoChanges}
+            disabled={!details?.id}
+          >
+            {i18n.t("cardDetails.save")}
+          </Button>
 
           <Button
             fullWidth
             variant="light"
-            color="indigo"
+            color="blue"
             onClick={() => {
               if (!exportPngUrl) return;
               // Скачивание через navigation: имя берём из Content-Disposition сервера
@@ -476,35 +485,18 @@ export function CardDetailsActionsPanel({
 
           <Button
             fullWidth
-            variant="light"
-            onClick={openSaveModalOrNotifyNoChanges}
-            disabled={!details?.id}
-          >
-            {i18n.t("cardDetails.save")}
-          </Button>
-
-          <Button
-            fullWidth
-            variant="light"
+            variant="subtle"
+            color="gray"
             onClick={() => void openMainInExplorer()}
             disabled={!details?.file_path}
             loading={isOpeningInExplorer}
           >
             {i18n.t("cardDetails.openInExplorer")}
           </Button>
-
           <Button
             fullWidth
-            variant="light"
-            color="red"
-            disabled={!details?.id}
-            onClick={() => setConfirmDeleteCardOpened(true)}
-          >
-            {i18n.t("cardDetails.delete")}
-          </Button>
-          <Button
-            fullWidth
-            variant="light"
+            variant="subtle"
+            color="orange"
             disabled={!details?.file_path}
             onClick={() => {
               const base = stripPngExt(getFilenameFromPath(details?.file_path));
@@ -513,6 +505,15 @@ export function CardDetailsActionsPanel({
             }}
           >
             {i18n.t("cardDetails.rename")}
+          </Button>
+          <Button
+            fullWidth
+            variant="light"
+            color="red"
+            disabled={!details?.id}
+            onClick={() => setConfirmDeleteCardOpened(true)}
+          >
+            {i18n.t("cardDetails.delete")}
           </Button>
 
           <Divider my="sm" />
