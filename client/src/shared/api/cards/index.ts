@@ -188,3 +188,35 @@ export async function renameCardMainFile(
 
   return response.json();
 }
+
+export type SaveCardMode =
+  | "overwrite_main"
+  | "overwrite_all_files"
+  | "save_new"
+  | "save_new_delete_old_main";
+
+export async function saveCard(opts: {
+  cardId: string;
+  mode: SaveCardMode;
+  card_json: unknown;
+}): Promise<{ ok: true; changed: boolean; card_id: string }> {
+  const response = await fetch(
+    `/api/cards/${encodeURIComponent(opts.cardId)}/save`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: opts.mode,
+        card_json: opts.card_json,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = (await response.text().catch(() => "")).trim();
+    if (errorText) throw new Error(errorText);
+    throw new Error(`${i18n.t("errors.saveFailed")}: ${response.statusText}`);
+  }
+
+  return response.json();
+}

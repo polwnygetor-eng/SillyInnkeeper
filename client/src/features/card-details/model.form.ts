@@ -28,6 +28,7 @@ export const fieldChanged = createEvent<{
   field: DraftField;
   value: CardDetailsDraft[DraftField];
 }>();
+export const draftSaved = createEvent<void>();
 
 export const $draft = createStore<CardDetailsDraft>(toDraft(null))
   .on(draftLoaded, (_, details) => toDraft(details))
@@ -59,6 +60,17 @@ export const greetingDeleted = createEvent<{
   list: GreetingList;
   id: string;
 }>();
+
+export const $isDirty = createStore(false)
+  .on(fieldChanged, () => true)
+  .on(greetingValueChanged, () => true)
+  .on(greetingAdded, () => true)
+  .on(greetingDuplicated, () => true)
+  .on(greetingDeleted, () => true)
+  .reset(draftLoaded)
+  .reset(greetingsLoaded)
+  .reset(draftSaved)
+  .reset(closeCard);
 
 type GreetingsState = {
   counter: number;

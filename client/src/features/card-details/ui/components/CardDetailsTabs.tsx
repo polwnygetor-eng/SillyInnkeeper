@@ -23,6 +23,7 @@ import {
   $altGreetingValues,
   $groupGreetingIds,
   $groupGreetingValues,
+  $isDirty,
   greetingAdded,
   greetingDeleted,
   greetingDuplicated,
@@ -95,6 +96,7 @@ export function CardDetailsTabs({
     duplicateGreeting,
     deleteGreeting,
     setGreeting,
+    isDirty,
   ] = useUnit([
     $altGreetingIds,
     $groupGreetingIds,
@@ -102,6 +104,7 @@ export function CardDetailsTabs({
     greetingDuplicated,
     greetingDeleted,
     greetingValueChanged,
+    $isDirty,
   ]);
 
   return (
@@ -128,7 +131,7 @@ export function CardDetailsTabs({
         </Paper>
       )}
 
-      {details && (
+      {details && isDirty && (
         <Alert color="yellow" variant="light">
           {t("cardDetails.unsavedChangesHint")}
         </Alert>

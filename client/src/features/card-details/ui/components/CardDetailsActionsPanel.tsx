@@ -13,13 +13,26 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { useUnit } from "effector-react";
 import type { CardDetails } from "@/shared/types/cards";
 import i18n from "@/shared/i18n/i18n";
 import { deleteCard, deleteCardFileDuplicate } from "@/shared/api/cards";
-import { renameCardMainFile, setCardMainFile } from "@/shared/api/cards";
+import {
+  renameCardMainFile,
+  saveCard,
+  setCardMainFile,
+} from "@/shared/api/cards";
 import { showFile } from "@/shared/api/explorer";
 import { CopyableTruncatedText } from "@/shared/ui/CopyableTruncatedText";
 import { closeCard, openCard } from "../../model";
+import {
+  $altGreetingIds,
+  $altGreetingValues,
+  $draft,
+  $groupGreetingIds,
+  $groupGreetingValues,
+  draftSaved,
+} from "../../model.form";
 
 function getFilenameFromPath(filePath: string | null | undefined): string {
   const p = (filePath ?? "").trim();
@@ -54,6 +67,113 @@ export function CardDetailsActionsPanel({
   const [openingDuplicatePath, setOpeningDuplicatePath] = useState<
     string | null
   >(null);
+  const [saveOpened, setSaveOpened] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [pendingCardJson, setPendingCardJson] = useState<unknown | null>(null);
+
+  const [draft, altIds, altValues, groupIds, groupValues, markSaved] = useUnit([
+    $draft,
+    $altGreetingIds,
+    $altGreetingValues,
+    $groupGreetingIds,
+    $groupGreetingValues,
+    draftSaved,
+  ]);
+
+  function canonicalizeForCompare(value: unknown): unknown {
+    if (value === null || value === undefined) return null;
+    if (Array.isArray(value)) return value.map(canonicalizeForCompare);
+    if (typeof value !== "object") return value;
+
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      if (key === "creation_date" || key === "modification_date") continue;
+      out[key] = canonicalizeForCompare(obj[key]);
+    }
+    return out;
+  }
+
+  function canonicalJsonString(value: unknown): string {
+    try {
+      return JSON.stringify(canonicalizeForCompare(value));
+    } catch {
+      return String(value);
+    }
+  }
+
+  function buildCcv3ToSave(): unknown | null {
+    if (!details) return null;
+
+    const baseObj =
+      details.data_json &&
+      typeof details.data_json === "object" &&
+      details.data_json !== null
+        ? (details.data_json as any)
+        : {};
+    const baseData =
+      baseObj.data && typeof baseObj.data === "object" && baseObj.data !== null
+        ? baseObj.data
+        : {};
+
+    const alternate_greetings = altIds.map((id) => groupTrim(altValues[id]));
+    const group_only_greetings = groupIds.map((id) =>
+      groupTrim(groupValues[id])
+    );
+
+    const creator_notes_multilingual =
+      baseData.creator_notes_multilingual &&
+      typeof baseData.creator_notes_multilingual === "object" &&
+      baseData.creator_notes_multilingual !== null
+        ? {
+            ...(baseData.creator_notes_multilingual as any),
+            en: draft.creator_notes,
+          }
+        : undefined;
+
+    const nextData: any = {
+      ...baseData,
+      name: draft.name,
+      creator: draft.creator,
+      tags: draft.tags,
+      description: draft.description,
+      personality: draft.personality,
+      scenario: draft.scenario,
+      first_mes: draft.first_mes,
+      mes_example: draft.mes_example,
+      creator_notes: draft.creator_notes,
+      ...(creator_notes_multilingual
+        ? { creator_notes_multilingual }
+        : undefined),
+      system_prompt: draft.system_prompt,
+      post_history_instructions: draft.post_history_instructions,
+      alternate_greetings,
+      group_only_greetings,
+      extensions:
+        baseData.extensions &&
+        typeof baseData.extensions === "object" &&
+        baseData.extensions !== null
+          ? baseData.extensions
+          : {},
+    };
+
+    // v3-required arrays
+    if (!Array.isArray(nextData.alternate_greetings))
+      nextData.alternate_greetings = [];
+    if (!Array.isArray(nextData.group_only_greetings))
+      nextData.group_only_greetings = [];
+
+    return {
+      ...baseObj,
+      spec: "chara_card_v3",
+      spec_version: "3.0",
+      data: nextData,
+    };
+  }
+
+  function groupTrim(value: unknown): string {
+    return typeof value === "string" ? value : String(value ?? "");
+  }
 
   const exportPngUrl = details?.id
     ? `/api/cards/${encodeURIComponent(details.id)}/export.png?download=1`
@@ -91,6 +211,71 @@ export function CardDetailsActionsPanel({
 
   const duplicates = details?.duplicates ?? [];
   const hasDuplicates = duplicates.length > 0;
+
+  function openSaveModalOrNotifyNoChanges(): void {
+    if (!details?.id) return;
+
+    const next = buildCcv3ToSave();
+    if (!next) return;
+
+    const prev = details.data_json ?? null;
+    if (canonicalJsonString(prev) === canonicalJsonString(next)) {
+      notifications.show({
+        title: i18n.t("cardDetails.save"),
+        message: i18n.t("cardDetails.saveNoChanges"),
+        color: "blue",
+        autoClose: 2500,
+      });
+      return;
+    }
+
+    setPendingCardJson(next);
+    setSaveOpened(true);
+  }
+
+  async function doSave(mode: Parameters<typeof saveCard>[0]["mode"]) {
+    if (!details?.id) return;
+    if (!pendingCardJson) return;
+    if (isSaving) return;
+
+    setIsSaving(true);
+    try {
+      const resp = await saveCard({
+        cardId: details.id,
+        mode,
+        card_json: pendingCardJson,
+      });
+
+      if (!resp.changed) {
+        notifications.show({
+          title: i18n.t("cardDetails.save"),
+          message: i18n.t("cardDetails.saveNoChanges"),
+          color: "blue",
+          autoClose: 2500,
+        });
+        setSaveOpened(false);
+        return;
+      }
+
+      notifications.show({
+        title: i18n.t("cardDetails.save"),
+        message: i18n.t("cardDetails.saveOk"),
+        color: "green",
+      });
+      markSaved();
+      setSaveOpened(false);
+      setPendingCardJson(null);
+      openCard(resp.card_id);
+    } catch (e) {
+      notifications.show({
+        title: i18n.t("cardDetails.save"),
+        message: i18n.t("cardDetails.saveFailed"),
+        color: "red",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function openMainInExplorer(): Promise<void> {
     const p = (details?.file_path ?? "").trim();
@@ -289,11 +474,14 @@ export function CardDetailsActionsPanel({
             {i18n.t("cardDetails.download")}
           </Button>
 
-          <Tooltip label={i18n.t("cardDetails.soon")} withArrow>
-            <Button fullWidth variant="light" disabled>
-              {i18n.t("cardDetails.save")}
-            </Button>
-          </Tooltip>
+          <Button
+            fullWidth
+            variant="light"
+            onClick={openSaveModalOrNotifyNoChanges}
+            disabled={!details?.id}
+          >
+            {i18n.t("cardDetails.save")}
+          </Button>
 
           <Button
             fullWidth
@@ -605,6 +793,64 @@ export function CardDetailsActionsPanel({
               {i18n.t("actions.save")}
             </Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={saveOpened}
+        onClose={() => setSaveOpened(false)}
+        title={i18n.t("cardDetails.saveModalTitle")}
+      >
+        <Stack gap="md">
+          {!hasDuplicates ? (
+            <>
+              <Button
+                onClick={() => void doSave("overwrite_main")}
+                loading={isSaving}
+              >
+                {i18n.t("cardDetails.saveOverwrite")}
+              </Button>
+              <Button
+                variant="light"
+                onClick={() => void doSave("save_new")}
+                loading={isSaving}
+              >
+                {i18n.t("cardDetails.saveAsNew")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={() => void doSave("save_new")}
+                loading={isSaving}
+              >
+                {i18n.t("cardDetails.saveAsNew")}
+              </Button>
+              <Button
+                color="orange"
+                variant="light"
+                onClick={() => void doSave("save_new_delete_old_main")}
+                loading={isSaving}
+              >
+                {i18n.t("cardDetails.saveAsNewDeleteOld")}
+              </Button>
+              <Button
+                color="red"
+                variant="light"
+                onClick={() => void doSave("overwrite_all_files")}
+                loading={isSaving}
+              >
+                {i18n.t("cardDetails.saveOverwriteWithDuplicates")}
+              </Button>
+            </>
+          )}
+          <Button
+            variant="default"
+            onClick={() => setSaveOpened(false)}
+            disabled={isSaving}
+          >
+            {i18n.t("actions.cancel")}
+          </Button>
         </Stack>
       </Modal>
     </>

@@ -37,6 +37,7 @@ const ru = {
     loadViewSettings: "Ошибка загрузки настроек отображения",
     saveViewSettings: "Ошибка сохранения настроек отображения",
     loadTags: "Ошибка загрузки тегов",
+    saveFailed: "Ошибка сохранения",
   },
   empty: {
     dash: "—",
@@ -207,6 +208,15 @@ const ru = {
     renameOk: "Файл переименован",
     renameFailed: "Не удалось переименовать файл",
 
+    saveModalTitle: "Сохранение",
+    saveNoChanges: "Изменений не было",
+    saveOk: "Карточка сохранена",
+    saveFailed: "Не удалось сохранить карточку",
+    saveOverwrite: "Перезаписать карточку",
+    saveOverwriteWithDuplicates: "Перезаписать карточку и дубли",
+    saveAsNew: "Сохранить как новую",
+    saveAsNewDeleteOld: "Сохранить как новую и удалить старую",
+
     edit: "Редактирование",
     preview: "Предпросмотр",
     collapseOneLine: "Свернуть в одну строку",
@@ -216,7 +226,7 @@ const ru = {
     duplicateField: "Дублировать",
     deleteField: "Удалить",
     unsavedChangesHint:
-      "Изменения пока не сохраняются (сохранение на бэкенд добавим позже).",
+      "Есть несохранённые изменения. Нажмите «Сохранить», иначе они будут потеряны при закрытии.",
   },
   creatorNotes: {
     title: "Заметки автора",

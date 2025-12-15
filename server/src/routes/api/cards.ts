@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { existsSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { rename, unlink } from "fs-extra";
 import { dirname, join } from "node:path";
 import { createCardsService } from "../../services/cards";
@@ -14,6 +15,9 @@ import type {
 import { createCardsFiltersService } from "../../services/cards-filters";
 import { getSettings } from "../../services/settings";
 import { getOrCreateLibraryId } from "../../services/libraries";
+import { createScanService } from "../../services/scan";
+import { createTagService } from "../../services/tags";
+import { computeContentHash } from "../../services/card-hash";
 import { AppError } from "../../errors/app-error";
 import { sendError } from "../../errors/http";
 import { buildPngWithCcv3TextChunk } from "../../services/png-export";
@@ -501,6 +505,306 @@ router.get("/cards/:id", async (req: Request, res: Response) => {
   } catch (error) {
     logger.errorKey(error, "api.cards.get_failed");
     return sendError(res, error, { status: 500, code: "api.cards.get_failed" });
+  }
+});
+
+type SaveCardMode =
+  | "overwrite_main"
+  | "overwrite_all_files"
+  | "save_new"
+  | "save_new_delete_old_main";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeToCcv3(cardJson: unknown): any {
+  if (!isPlainObject(cardJson)) return null;
+  const base: any = cardJson;
+  const baseData: any = isPlainObject(base.data) ? base.data : {};
+
+  // CCv3 requires `data.extensions` (Record<string, any>)
+  const baseExtensions: any = isPlainObject(baseData.extensions)
+    ? baseData.extensions
+    : {};
+
+  return {
+    ...base,
+    spec: "chara_card_v3",
+    spec_version: "3.0",
+    data: {
+      ...baseData,
+      // keep existing multilingual notes, but we will keep creator_notes in sync below
+      extensions: baseExtensions,
+      // required arrays in v3
+      alternate_greetings: Array.isArray(baseData.alternate_greetings)
+        ? baseData.alternate_greetings
+        : [],
+      group_only_greetings: Array.isArray(baseData.group_only_greetings)
+        ? baseData.group_only_greetings
+        : [],
+    },
+  };
+}
+
+// POST /api/cards/:id/save - сохранение (перезапись / сохранить как новую) с дедуп-логикой
+router.post("/cards/:id/save", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const modeRaw = (req.body as any)?.mode;
+    const cardJsonRaw = (req.body as any)?.card_json;
+
+    const mode: SaveCardMode =
+      modeRaw === "overwrite_main" ||
+      modeRaw === "overwrite_all_files" ||
+      modeRaw === "save_new" ||
+      modeRaw === "save_new_delete_old_main"
+        ? modeRaw
+        : "overwrite_main";
+
+    const normalized = normalizeToCcv3(cardJsonRaw);
+    if (!normalized || !isPlainObject(normalized.data)) {
+      throw new AppError({ status: 400, code: "api.cards.invalid_card_json" });
+    }
+
+    const db = getDb(req);
+
+    const cardRow = db
+      .prepare(
+        `
+        SELECT id, library_id, content_hash, avatar_path, data_json, primary_file_path
+        FROM cards
+        WHERE id = ?
+        LIMIT 1
+      `
+      )
+      .get(id) as
+      | {
+          id: string;
+          library_id: string | null;
+          content_hash: string | null;
+          avatar_path: string | null;
+          data_json: string;
+          primary_file_path: string | null;
+        }
+      | undefined;
+
+    if (!cardRow) {
+      throw new AppError({ status: 404, code: "api.cards.not_found" });
+    }
+
+    const fileRows = db
+      .prepare(
+        `
+        SELECT cf.file_path, cf.file_birthtime
+        FROM card_files cf
+        WHERE cf.card_id = ?
+        ORDER BY cf.file_birthtime ASC, cf.file_path ASC
+      `
+      )
+      .all(id) as Array<{ file_path: string; file_birthtime: number }>;
+
+    const file_paths = fileRows
+      .map((r) => r.file_path)
+      .filter((p) => typeof p === "string" && p.trim().length > 0);
+
+    const primary = cardRow.primary_file_path?.trim()
+      ? cardRow.primary_file_path.trim()
+      : null;
+    const main_file_path =
+      primary && file_paths.includes(primary)
+        ? primary
+        : file_paths.length > 0
+        ? file_paths[0]
+        : null;
+
+    if (!main_file_path) {
+      throw new AppError({ status: 404, code: "api.image.not_found" });
+    }
+    if (!existsSync(main_file_path)) {
+      throw new AppError({ status: 404, code: "api.image.file_not_found" });
+    }
+
+    // --- No-changes short-circuit (compare by the same hash as dedup) ---
+    const currentParsed = safeJsonParse<unknown>(cardRow.data_json);
+    const currentHash =
+      (cardRow.content_hash ?? "").trim().length > 0
+        ? (cardRow.content_hash as string)
+        : computeContentHash(currentParsed);
+    const nextHash = computeContentHash(normalized);
+
+    if (currentHash === nextHash) {
+      res.json({ ok: true, changed: false, card_id: id });
+      return;
+    }
+
+    // --- Ensure tags exist ONLY on save ---
+    const tagsValue = (normalized as any)?.data?.tags;
+    const tags = Array.isArray(tagsValue)
+      ? tagsValue
+          .map((t: any) => (typeof t === "string" ? t : String(t)))
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0)
+      : [];
+    if (tags.length > 0) {
+      const tagService = createTagService(db);
+      tagService.ensureTagsExist(tags);
+    }
+
+    // keep creator_notes_multilingual.en in sync if present
+    const dataObj: any = (normalized as any).data;
+    if (
+      isPlainObject(dataObj.creator_notes_multilingual) &&
+      typeof dataObj.creator_notes === "string"
+    ) {
+      dataObj.creator_notes_multilingual = {
+        ...(dataObj.creator_notes_multilingual as any),
+        en: dataObj.creator_notes,
+      };
+    }
+
+    const scanService = createScanService(
+      db,
+      (cardRow.library_id ?? "cards").trim() || "cards"
+    );
+
+    const rewritePngInPlace = async (filePath: string, ccv3Object: unknown) => {
+      const png = await readFile(filePath);
+      const out = buildPngWithCcv3TextChunk({ inputPng: png, ccv3Object });
+      await writeFile(filePath, out);
+    };
+
+    const writeNewPng = async (
+      sourcePngPath: string,
+      targetPngPath: string,
+      ccv3Object: unknown
+    ) => {
+      const png = await readFile(sourcePngPath);
+      const out = buildPngWithCcv3TextChunk({ inputPng: png, ccv3Object });
+      await writeFile(targetPngPath, out);
+    };
+
+    const pickUniquePngPath = (folder: string, baseName: string): string => {
+      const base = sanitizeWindowsFilenameBase(baseName, `card-${id}`);
+      let candidate = join(folder, `${base}.png`);
+      if (!existsSync(candidate)) return candidate;
+      for (let i = 1; i < 1000; i += 1) {
+        candidate = join(folder, `${base} (${i}).png`);
+        if (!existsSync(candidate)) return candidate;
+      }
+      // Should be practically unreachable
+      return join(folder, `${base} (${Date.now()}).png`);
+    };
+
+    const addNonceForSaveAsNew = (ccv3Object: any): any => {
+      const next = normalizeToCcv3(ccv3Object);
+      if (!next) return next;
+      const data = next.data ?? {};
+      const extensions = isPlainObject(data.extensions)
+        ? { ...data.extensions }
+        : {};
+      extensions.silly_innkeeper_save_id = randomUUID();
+      next.data = { ...data, extensions };
+      return next;
+    };
+
+    if (mode === "overwrite_main") {
+      // no duplicates scenario (UI should not show this mode when duplicates exist)
+      await rewritePngInPlace(main_file_path, normalized);
+      await scanService.syncSingleFile(main_file_path);
+      res.json({ ok: true, changed: true, card_id: id });
+      return;
+    }
+
+    if (mode === "overwrite_all_files") {
+      for (const p of file_paths) {
+        if (!p || !existsSync(p)) continue;
+        await rewritePngInPlace(p, normalized);
+        await scanService.syncSingleFile(p);
+      }
+      res.json({ ok: true, changed: true, card_id: id });
+      return;
+    }
+
+    if (mode === "save_new" || mode === "save_new_delete_old_main") {
+      const folder = dirname(main_file_path);
+      const nameCandidate =
+        typeof (normalized as any)?.data?.name === "string"
+          ? String((normalized as any).data.name)
+          : "";
+      const targetPath = pickUniquePngPath(folder, nameCandidate);
+
+      const withNonce = addNonceForSaveAsNew(normalized);
+      await writeNewPng(main_file_path, targetPath, withNonce);
+      await scanService.syncSingleFile(targetPath);
+
+      const newRow = db
+        .prepare(`SELECT card_id FROM card_files WHERE file_path = ? LIMIT 1`)
+        .get(targetPath) as { card_id: string } | undefined;
+      if (!newRow?.card_id) {
+        throw new AppError({ status: 500, code: "api.cards.save_failed" });
+      }
+
+      if (mode === "save_new_delete_old_main") {
+        const oldPath = main_file_path;
+
+        // Same semantics as DELETE /api/cards/:id/files, but for the main file.
+        const before = db
+          .prepare(
+            `
+            SELECT COUNT(*) as cnt
+            FROM card_files
+            WHERE card_id = ?
+          `
+          )
+          .get(id) as { cnt: number };
+
+        db.transaction(() => {
+          db.prepare(`DELETE FROM card_files WHERE file_path = ?`).run(oldPath);
+
+          const after = db
+            .prepare(
+              `
+              SELECT COUNT(*) as cnt
+              FROM card_files
+              WHERE card_id = ?
+            `
+            )
+            .get(id) as { cnt: number };
+
+          if ((after?.cnt ?? 0) === 0) {
+            db.prepare(`DELETE FROM cards WHERE id = ?`).run(id);
+          }
+        })();
+
+        await unlink(oldPath).catch((e: any) => {
+          if (e && (e.code === "ENOENT" || e.code === "ENOTDIR")) return;
+          throw e;
+        });
+
+        // If we deleted the last file, clean thumbnail
+        if ((before?.cnt ?? 0) <= 1 && cardRow.avatar_path) {
+          const uuid = cardRow.avatar_path
+            .split("/")
+            .pop()
+            ?.replace(".webp", "");
+          if (uuid) {
+            await deleteThumbnail(uuid);
+          }
+        }
+      }
+
+      res.json({ ok: true, changed: true, card_id: newRow.card_id });
+      return;
+    }
+
+    res.json({ ok: true, changed: true, card_id: id });
+  } catch (error) {
+    logger.errorKey(error, "api.cards.save_failed");
+    return sendError(res, error, {
+      status: 500,
+      code: "api.cards.save_failed",
+    });
   }
 });
 

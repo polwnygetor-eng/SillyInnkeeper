@@ -37,6 +37,7 @@ const en = {
     loadViewSettings: "Failed to load view settings",
     saveViewSettings: "Failed to save view settings",
     loadTags: "Failed to load tags",
+    saveFailed: "Failed to save",
   },
   empty: {
     dash: "—",
@@ -204,6 +205,15 @@ const en = {
     renameOk: "File renamed",
     renameFailed: "Failed to rename file",
 
+    saveModalTitle: "Save",
+    saveNoChanges: "No changes",
+    saveOk: "Card saved",
+    saveFailed: "Failed to save card",
+    saveOverwrite: "Overwrite card",
+    saveOverwriteWithDuplicates: "Overwrite card and duplicates",
+    saveAsNew: "Save as new",
+    saveAsNewDeleteOld: "Save as new and delete old",
+
     edit: "Edit",
     preview: "Preview",
     collapseOneLine: "Collapse to one line",
@@ -213,7 +223,7 @@ const en = {
     duplicateField: "Duplicate",
     deleteField: "Delete",
     unsavedChangesHint:
-      "Changes are not saved yet (backend save will be added later).",
+      "You have unsaved changes. Click “Save”, otherwise changes will be lost when closing.",
   },
   creatorNotes: {
     title: "Creator notes",

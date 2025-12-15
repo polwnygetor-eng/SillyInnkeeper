@@ -75,6 +75,8 @@ const en = {
   "api.cards.not_found": "Card was not found",
   "api.cards.filters_failed": "Could not get cards filters data",
   "api.cards.export_failed": "Could not export card PNG",
+  "api.cards.invalid_card_json": "Invalid card data for save",
+  "api.cards.save_failed": "Could not save card",
   "api.export.invalid_data_json": "Invalid card data for export",
 
   "api.image.not_found": "Image was not found",

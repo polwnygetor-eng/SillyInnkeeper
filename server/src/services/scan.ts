@@ -3,39 +3,15 @@ import { statSync, existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { readdir as readdirAsync, writeFile, ensureDir } from "fs-extra";
 import pLimit from "p-limit";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createDatabaseService, DatabaseService } from "./database";
 import { CardParser } from "./card-parser";
 import { generateThumbnail, deleteThumbnail } from "./thumbnail";
 import { createTagService } from "./tags";
+import { computeContentHash } from "./card-hash";
 import { logger } from "../utils/logger";
 
 const CONCURRENT_LIMIT = 5;
-
-function canonicalizeForHash(value: unknown): unknown {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) return value.map(canonicalizeForHash);
-  if (typeof value !== "object") return value;
-
-  const obj = value as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-
-  for (const key of Object.keys(obj).sort()) {
-    // CCv3: игнорируем поля, которые часто меняются при переэкспорте
-    if (key === "creation_date" || key === "modification_date") continue;
-    out[key] = canonicalizeForHash(obj[key]);
-  }
-
-  // CCv3: поля creation_date/modification_date лежат обычно в card.data
-  // (снаружи тоже может встретиться — игнорим в любом месте)
-  return out;
-}
-
-function computeContentHash(cardOriginalData: unknown): string {
-  const canonical = canonicalizeForHash(cardOriginalData);
-  const json = JSON.stringify(canonical);
-  return createHash("sha256").update(json, "utf8").digest("hex");
-}
 
 /**
  * Сервис для сканирования папки с карточками и синхронизации с базой данных
@@ -50,6 +26,14 @@ export class ScanService {
     private libraryId: string = "cards"
   ) {
     this.cardParser = new CardParser();
+  }
+
+  /**
+   * Обрабатывает один PNG файл (без полного рескана папки).
+   * Полезно для точечного обновления БД при изменениях, сделанных приложением.
+   */
+  async syncSingleFile(filePath: string): Promise<void> {
+    await this.processFile(filePath);
   }
 
   /**

@@ -81,6 +81,8 @@ const ru = {
   "api.cards.not_found": "Карточка не найдена",
   "api.cards.filters_failed": "Не удалось получить данные фильтров карточек",
   "api.cards.export_failed": "Не удалось экспортировать PNG карточки",
+  "api.cards.invalid_card_json": "Некорректные данные карточки для сохранения",
+  "api.cards.save_failed": "Не удалось сохранить карточку",
   "api.export.invalid_data_json": "Некорректные данные карточки для экспорта",
 
   "api.image.not_found": "Изображение не найдено",
