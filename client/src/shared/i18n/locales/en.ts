@@ -222,6 +222,8 @@ const en = {
     addField: "Add",
     duplicateField: "Duplicate",
     deleteField: "Delete",
+    moveUp: "Move up",
+    moveDown: "Move down",
     unsavedChangesHint:
       "You have unsaved changes. Click “Save”, otherwise changes will be lost when closing.",
   },

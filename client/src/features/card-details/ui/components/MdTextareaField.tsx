@@ -164,7 +164,7 @@ export function MdTextareaField({
   textareaKey,
   textareaProps,
 }: {
-  label: string;
+  label: ReactNode;
   value?: string;
   onChange?: (next: string) => void;
   placeholder?: string;

@@ -15,18 +15,24 @@ import { MdTextareaField } from "./MdTextareaField";
 function GreetingRow({
   id,
   idx,
+  totalCount,
   valuesStore,
   onChangeValue,
   onDuplicate,
   onDelete,
+  onMoveUp,
+  onMoveDown,
   resetKey,
 }: {
   id: string;
   idx: number;
+  totalCount: number;
   valuesStore: Store<Record<string, string>>;
   onChangeValue: (id: string, next: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
   resetKey?: string | number;
 }) {
   const { t } = useTranslation();
@@ -36,10 +42,69 @@ function GreetingRow({
     fn: (values, [key]) => values[key] ?? "",
   });
 
+  const canMoveUp = idx > 0;
+  const canMoveDown = idx < totalCount - 1;
+
   return (
     <MdTextareaField
       key={`${id}-${resetKey ?? "k"}`}
-      label={`#${idx + 1}`}
+      label={
+        <Group gap={8} wrap="nowrap">
+          <Text size="sm" fw={600}>
+            #{idx + 1}
+          </Text>
+          {onMoveUp && (
+            <Tooltip label={t("cardDetails.moveUp")} withArrow>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                disabled={!canMoveUp}
+                aria-label={t("cardDetails.moveUp")}
+                onClick={() => canMoveUp && onMoveUp(id)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 15l-6-6-6 6" />
+                </svg>
+              </ActionIcon>
+            </Tooltip>
+          )}
+          {onMoveDown && (
+            <Tooltip label={t("cardDetails.moveDown")} withArrow>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                disabled={!canMoveDown}
+                aria-label={t("cardDetails.moveDown")}
+                onClick={() => canMoveDown && onMoveDown(id)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      }
       minRows={6}
       resetKey={`${resetKey ?? ""}:${id}`}
       value={value}
@@ -109,6 +174,8 @@ export function EditableGreetingsList({
   onAdd,
   onDuplicate,
   onDelete,
+  onMoveUp,
+  onMoveDown,
   resetKey,
 }: {
   title: string;
@@ -118,6 +185,8 @@ export function EditableGreetingsList({
   onAdd: () => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
   resetKey?: string | number;
 }) {
   const { t } = useTranslation();
@@ -168,10 +237,13 @@ export function EditableGreetingsList({
               key={id}
               id={id}
               idx={idx}
+              totalCount={ids.length}
               valuesStore={valuesStore}
               onChangeValue={onChangeValue}
               onDuplicate={onDuplicate}
               onDelete={onDelete}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
               resetKey={resetKey}
             />
           ))}

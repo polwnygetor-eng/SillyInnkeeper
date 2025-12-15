@@ -60,6 +60,11 @@ export const greetingDeleted = createEvent<{
   list: GreetingList;
   id: string;
 }>();
+export const greetingMoved = createEvent<{
+  list: GreetingList;
+  id: string;
+  direction: "up" | "down";
+}>();
 
 export const $isDirty = createStore(false)
   .on(fieldChanged, () => true)
@@ -67,6 +72,7 @@ export const $isDirty = createStore(false)
   .on(greetingAdded, () => true)
   .on(greetingDuplicated, () => true)
   .on(greetingDeleted, () => true)
+  .on(greetingMoved, () => true)
   .reset(draftLoaded)
   .reset(greetingsLoaded)
   .reset(draftSaved)
@@ -102,6 +108,20 @@ function duplicateInList(
   if (idx < 0) return [...ids, newId];
   const next = [...ids];
   next.splice(idx + 1, 0, newId);
+  return next;
+}
+
+function moveInList(
+  ids: string[],
+  id: string,
+  direction: "up" | "down"
+): string[] {
+  const idx = ids.findIndex((x) => x === id);
+  if (idx < 0) return ids;
+  const newIdx = direction === "up" ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= ids.length) return ids;
+  const next = [...ids];
+  [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
   return next;
 }
 
@@ -148,6 +168,13 @@ const $altGreetings = createStore<GreetingsState>({
       values: { ...st.values, [id]: v },
     };
   })
+  .on(greetingMoved, (st, p) => {
+    if (p.list !== "alt") return st;
+    return {
+      ...st,
+      ids: moveInList(st.ids, p.id, p.direction),
+    };
+  })
   .reset(closeCard);
 
 const $groupGreetings = createStore<GreetingsState>({
@@ -191,6 +218,13 @@ const $groupGreetings = createStore<GreetingsState>({
       counter: st.counter + 1,
       ids: duplicateInList(st.ids, p.id, id),
       values: { ...st.values, [id]: v },
+    };
+  })
+  .on(greetingMoved, (st, p) => {
+    if (p.list !== "group") return st;
+    return {
+      ...st,
+      ids: moveInList(st.ids, p.id, p.direction),
     };
   })
   .reset(closeCard);

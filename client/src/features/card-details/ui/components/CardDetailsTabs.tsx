@@ -27,6 +27,7 @@ import {
   greetingAdded,
   greetingDeleted,
   greetingDuplicated,
+  greetingMoved,
   greetingValueChanged,
 } from "../../model.form";
 import { DraftCreatorField } from "./fields/DraftCreatorField";
@@ -95,6 +96,7 @@ export function CardDetailsTabs({
     addGreeting,
     duplicateGreeting,
     deleteGreeting,
+    moveGreeting,
     setGreeting,
     isDirty,
   ] = useUnit([
@@ -103,6 +105,7 @@ export function CardDetailsTabs({
     greetingAdded,
     greetingDuplicated,
     greetingDeleted,
+    greetingMoved,
     greetingValueChanged,
     $isDirty,
   ]);
@@ -250,6 +253,14 @@ export function CardDetailsTabs({
                 if (!canEdit) return;
                 deleteGreeting({ list: "alt", id });
               }}
+              onMoveUp={(id) => {
+                if (!canEdit) return;
+                moveGreeting({ list: "alt", id, direction: "up" });
+              }}
+              onMoveDown={(id) => {
+                if (!canEdit) return;
+                moveGreeting({ list: "alt", id, direction: "down" });
+              }}
               resetKey={resetKey}
             />
             <EditableGreetingsList
@@ -271,6 +282,14 @@ export function CardDetailsTabs({
               onDelete={(id) => {
                 if (!canEdit) return;
                 deleteGreeting({ list: "group", id });
+              }}
+              onMoveUp={(id) => {
+                if (!canEdit) return;
+                moveGreeting({ list: "group", id, direction: "up" });
+              }}
+              onMoveDown={(id) => {
+                if (!canEdit) return;
+                moveGreeting({ list: "group", id, direction: "down" });
               }}
               resetKey={resetKey}
             />

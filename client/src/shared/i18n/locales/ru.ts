@@ -225,6 +225,8 @@ const ru = {
     addField: "Добавить",
     duplicateField: "Дублировать",
     deleteField: "Удалить",
+    moveUp: "Вверх",
+    moveDown: "Вниз",
     unsavedChangesHint:
       "Есть несохранённые изменения. Нажмите «Сохранить», иначе они будут потеряны при закрытии.",
   },
